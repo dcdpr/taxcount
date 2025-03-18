@@ -2,29 +2,39 @@
 
 ## What is Taxcount?
 
-Taxcount is an open-source tax calculation tool designed specifically
-for Bitcoin traders filing US tax returns.  It generates accurate data
-for IRS Form 8949 ("Sales and Other Dispositions of Capital Assets")
-which feeds into Schedule D ("Capital Gains and Losses") on your 1040.
+Taxcount is an open-source airgapped-network tax calculation tool
+designed specifically for Bitcoin traders filing US tax returns.  It
+generates data for IRS Form 8949 ("Sales and Other Dispositions of
+Capital Assets") which feeds into Schedule D ("Capital Gains and
+Losses") on your 1040.
+
+In general, when using Taxcount, your accounting job is to know which
+transactions were spends or labor income (which includes mining), and
+collect the wallet and exchange exports.  If, in the tax year of
+interest, you spent a
+[UTXO](https://river.com/learn/terms/u/unspent-transaction-output-utxo/)
+that was not labor income, then Taxcount also has facilities for
+declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
 
 ### Comprehensive Transaction Tracking
 
-- **Multi-source integration**: Seamlessly processes exchange trades and on-chain wallet transactions
-- **Basis tracking**: Follows the purchase price of your Bitcoin through any number of wallet transfers
-- **Complete simulation**: Runs a parallel model of all tax-year transactions across your entire Bitcoin ecosystem
+- **Multi-source integration** - process exchange trades and on-chain wallet transactions
+- **Basis tracking** - follow the purchase price of your Bitcoin through any number of wallet transfers and exchange round-trips
+- **Complete simulation** - runs a parallel model of all tax-year transactions across your entire Bitcoin ecosystem
 
 ### Key Features
 
 * **No cloud dependency** - connect to local bitcoind or Esplora
-* **Precise basis tracking** with special attention to fees
-* **Multiple transaction types** supported:
+* **Precise basis tracking** - with special attention to fees
+* **Multiple transaction types** - supported:
   * Spending
   * Trading gains/losses
+  * Margin Trading gains/losses
   * Mining income
   * Labor income
   * Lending activities
-* **Direct output** to CSV format with all Form 8949 fields
-* **Puerto Rico residency** considerations included
+* **CSV outout** - for Form 8949 fields
+* **Non-US residency** - Puerto Rico residency is supported
 
 ### Technical Advantages
 
@@ -33,9 +43,10 @@ which feeds into Schedule D ("Capital Gains and Losses") on your 1040.
 - **UTXO-level on-chain binning** - maximum accuracy
 - **FIFO exchange binning** - as required
 - **Handles Margin trades** - all trade types on the exchange are supported
-- **Zero need for basis averaging** - tracks every detail for complete accuracy
-- **Flexible wallet support** - works with single wallets, multiple wallets, or exchange-only setups
-- **International Currencies** - the archtecture is ready for trades in any fiat quote currency
+- **Zero need for basis averaging** - tracks every detail for complete accuracy (and satisfies [IRS Rev. Proc. 2024-28](https://www.irs.gov/irb/2024-31_irb#REV-PROC-2024-28)
+)
+- **Flexible wallet support** - generic wallet format included (for bitcoind spends), as well as Electrum and Ledger Live wallet formats
+- **International Currencies** - the archtecture is ready for trades in any fiat quote currency, and several are already included
 - **Extensive Testing** - testing strategy includes generative simulated data, but see [limitations](#a-temporary-tragedy)
 
 ### Exchange Support
@@ -669,7 +680,7 @@ final summary.
 
 ### 2024-03-05 Bootstrap feature merged into main.
 
-### 2025-03-17 Release to Github.
+### 2025-03-18 Release to Github.
 
 ## Special Thanks
 
