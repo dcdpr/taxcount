@@ -1,0 +1,74 @@
+[package]
+name = "taxcount"
+description = "US tax accounting software for Bitcoiners, with support for popular cryptocurrencies and fiat exchanges."
+version = "0.2.0"
+authors = ["rgrant <taxcount@contract.design>", "Jay Oster <jay@blipjoy.com>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+rust-version = "1.82.0"
+
+[dependencies]
+base64 = "0.22"
+bdk = { version = "0.29", default-features = false, features = ["std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+csv = "1"
+directories = "6"
+esploda = { version = "0.2", path = "crates/esploda", features = ["bitcoind"] }
+error-iter = "0.4"
+fett = { version = "0.1", path = "crates/fett" }
+gitver = { version = "0.1", path = "crates/gitver" }
+is-terminal = "0.4"
+miniscript = "10"
+onlyargs = "0.2"
+onlyargs_derive = "0.2"
+parking_lot = "0.12"
+rayon = "1"
+ron = "0.8"
+rust_decimal = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ureq = { version = "3", default-features = false, features = ["gzip", "json", "native-tls"] }
+
+# For the `optimize` feature
+log = { version = "0.4", optional = true }
+
+[build-dependencies]
+gitver = { version = "0.1", path = "crates/gitver" }
+
+[dev-dependencies]
+arbtest = "0.3"
+serde_json = "1"
+similar-asserts = "1"
+tracing-log = "0.2"
+tracing-test = { version = "0.2", features = ["no-env-filter"] }
+
+[features]
+default = ["optimize", "tls"]
+# Disable the `optimize` feature to allow all log levels in release builds
+optimize = ["log/release_max_level_warn", "tracing/release_max_level_warn"]
+
+tls = ["ureq/native-tls"]
+
+[workspace]
+members = [
+    "crates/esploda",
+    "crates/fett",
+    "crates/gitver",
+    "tools/bootstrap-checkpoint",
+    "tools/kraken-export-fix",
+    "tools/ohlc-ness",
+    "tools/query-exchange-rates",
+]
+
+[package.metadata.cargo-machete]
+ignored = [
+    # `log` is required for the `optimize` feature flag.
+    "log",
+]
+
+[lints.rust]
+unsafe_code = "forbid"

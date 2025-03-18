@@ -1,0 +1,18 @@
+[package]
+name = "gitver"
+version = "0.1.0"
+authors = ["rgrant <rgrant@mbe>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[dependencies]
+bitcoin_hashes = "0.12"
+data-encoding = "2"
+quote = "1"
+walkdir = "2"
+serde = { version = "1", features = ["derive"] }
+
+[features]
+verbose = []
+default = []

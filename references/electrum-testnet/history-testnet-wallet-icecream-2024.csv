@@ -1,0 +1,2 @@
+transaction_hash,label,confirmations,value,fiat_value,fee,fiat_fee,timestamp
+9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb,"sent evil spam to wallets a and b at the same time,  purely to crash their tax accounting system.   Mwahahahah!",7,-0.0000045,,0.0000025,,2024-03-04 17:43:28

@@ -1,0 +1,31 @@
+[package]
+name = "ohlc-ness"
+version = "0.1.0"
+authors = ["Jay Oster <jay@blipjoy.com>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+csv = "1"
+error-iter = "0.4"
+onlyargs = "0.2"
+onlyargs_derive = "0.2"
+reqwest = { version = "0.12", features = ["json"] }
+ron = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+taxcount = { version = "0.2", path = "../../" }
+thiserror = "2"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread", "time"] }
+
+# Disable IDNA (internationalized domains) support.
+# SEE: https://docs.rs/crate/idna_adapter/latest
+idna_adapter = "=1.0.0"
+
+[package.metadata.cargo-machete]
+ignored = [
+    # `idna_adapter` is required to disable IDNA.
+    "idna_adapter",
+]

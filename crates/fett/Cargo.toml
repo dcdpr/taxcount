@@ -1,0 +1,26 @@
+[package]
+name = "fett"
+description = "This is the way to do concurrent memoizing maps."
+authors = ["Jay Oster <jay@blipjoy.com>"]
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[dependencies]
+parking_lot = "0.12"
+
+[dev-dependencies]
+ahash = "0.8"
+fnv = "1"
+rayon = "1"
+
+[target.'cfg(loom)'.dependencies]
+loom = { version = "0.7", features = ["checkpoint"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+[package.metadata.cargo-machete]
+# `ahash` is used by doctests.
+ignored = ["ahash"]

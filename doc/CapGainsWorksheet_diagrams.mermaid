@@ -1,0 +1,43 @@
+flowchart LR
+
+    %% "New way" uses concrete types in intermediate stages, and
+    %% stores fully resolved tax data.  Only taxable events are kept.
+    %% Fees are not taxable.
+
+
+    style New fill:#555
+    style Event1 fill:#333
+    style Event2 fill:#333
+    style Event3 fill:#333
+
+    subgraph New[New way]
+        direction LR
+        CapGainsWorksheet -- events --> VM["Vec#lt;Event#gt;"]
+
+        subgraph Events
+            VM --> M1[Event]
+            subgraph Event1[Event 1]
+                M1 -- lp --> L1[RC#lt;LedgerParsed#gt;]
+                M1 -- trade_details --> D1[Vec#lt;EventTradeAtom#gt;]
+                D1 --> EA1_1[EventTradeAtom]
+                D1 --> EA1_2[EventTradeAtom]
+                D1 --> EA1_3[EventTradeAtom]
+            end
+
+            VM --> M2[Event]
+            subgraph Event2[Event 2]
+                M2 -- lp --> L2[RC#lt;LedgerParsed#gt;]
+                M2 -- trade_details --> D2[Vec#lt;EventTradeAtom#gt;]
+                D2 --> EA2_1[EventTradeAtom]
+                D2 --> EA2_2[EventTradeAtom]
+            end
+
+            VM --> M3[Event]
+            subgraph Event3[Event 3]
+                M3 -- lp --> L3[RC#lt;LedgerParsed#gt;]
+                M3 -- trade_details --> D3[Vec#lt;EventTradeAtom#gt;]
+                D3 --> EA3_1[EventTradeAtom]
+                D3 --> EA3_2[EventTradeAtom]
+            end
+        end
+    end

@@ -1,0 +1,18 @@
+[package]
+name = "bootstrap-checkpoint"
+description = "Bootstrap taxcount by creating a new checkpoint file"
+version = "0.1.0"
+authors = ["Jay Oster <jay@blipjoy.com>", "rgrant <rgrant@contract.design>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+csv = "1"
+error-iter = "0.4"
+onlyargs = "0.2"
+onlyargs_derive = "0.2"
+serde = { version = "1", features = ["derive"] }
+taxcount = { version = "0.2", path = "../../" }
+thiserror = "2"

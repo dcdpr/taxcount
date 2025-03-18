@@ -1,0 +1,321 @@
+{
+    "addr_history": {
+        "tb1q0g96p0n24yne54cdzwvcy39g63knqdzyzye82k": [],
+        "tb1q2jdve0nlq96cp5udsazky72483wsdfpfdkjlfs": [],
+        "tb1q38gea8uyy2s5gvdzfwys6839887rhxdw3qxv3l": [],
+        "tb1q4jsrc40aql3r78ycsxcg6w2qewzxfgk6ftq9a2": [],
+        "tb1q6n3du7gw5ffa895epzafmftdslj0qht3gh3pq5": [],
+        "tb1q8dr47sxglh74ee0y5y9yhdd68rfc7s7rdr3s9e": [],
+        "tb1q9ffmqucmgqe5yfjyrj5r8trr5vcdzevm7t2h0v": [],
+        "tb1q9rdyk5gsx7vnnxpyv9e45c8t3svq4q6tmltww6": [],
+        "tb1qavwp6m7jgx06mjyelnuzvwt7xa6gyz74czskv4": [
+            [
+                "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622",
+                2540836
+            ],
+            [
+                "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000",
+                2540840
+            ],
+            [
+                "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507",
+                2540841
+            ],
+            [
+                "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb",
+                2580512
+            ]
+        ],
+        "tb1qdnhrvwftw5dwhlzytgrh8r0p4jsspnp4ymc23e": [],
+        "tb1qfl0hgztrqwge23wf6stl2lr7x6a08cs9npv4x2": [],
+        "tb1qg9n2dhclp5kezalupm8erakegc2dqywl8g7c2f": [],
+        "tb1qjfdu4v3mlhf34pt9vl5h4msxj4dxkztv65xpsd": [],
+        "tb1qkcexg7plcd2mllue58l3x6ltk9yfs5x2lfgela": [],
+        "tb1qkfkdlq4x83zweu2jhqqmkmxlnl4pqg3jh8rtyt": [],
+        "tb1qklxep8ppnnhe6mtqk26rz3y4pzg29uumkadvqk": [],
+        "tb1ql6z93xkwx4zxy4ltt3tddawufj5pata897e5u9": [],
+        "tb1qljl6c4scxefp9dmcnthkfrg5g9swt9ftvz7ktn": [],
+        "tb1qmt2ahs6k3lrw70pvj942vnrrnvwp2lr799w670": [],
+        "tb1qna4jchqycqt36cx46j2zxpvyyk5yc228280dsc": [],
+        "tb1qns5v6z7kk6ps0wqu3stkfpp49394fyyass8cfm": [],
+        "tb1qp26dhmy8ynlvzu668sqqg75tmr0c9tdc46575s": [],
+        "tb1qp375l5pt842pq2hxjk4msga522vce2vtjp76ac": [],
+        "tb1qp5dmz90vzkmv9aa3x4kpp9cmgv0cptnhejymcf": [],
+        "tb1qrudrxjznkday7x5a7hulmrs0rpcun23l8jm867": [],
+        "tb1qs6wn526pt6r9n3e9hmhlpckg5ucxkhpyclc7sx": [],
+        "tb1qszzhtuqv9nze84g0g38pzhn7ev5lgq8rvtt8c7": [],
+        "tb1qww62u0cn4flzdj9j7lqrk633qqstlcep2a3gef": [],
+        "tb1qxq4a7xvup8lxhu4cr7mzt54mmts2h99dg9h4uy": [],
+        "tb1qyr439ul7h7rksq23pcz8x2rwallcypkjgsv0se": [],
+        "tb1qz4t3wqtz8qhqpdq5dx7rskuqwmnf8u4jkpqewy": []
+    },
+    "addresses": {
+        "change": [
+            "tb1qjfdu4v3mlhf34pt9vl5h4msxj4dxkztv65xpsd",
+            "tb1qdnhrvwftw5dwhlzytgrh8r0p4jsspnp4ymc23e",
+            "tb1qxq4a7xvup8lxhu4cr7mzt54mmts2h99dg9h4uy",
+            "tb1qns5v6z7kk6ps0wqu3stkfpp49394fyyass8cfm",
+            "tb1ql6z93xkwx4zxy4ltt3tddawufj5pata897e5u9",
+            "tb1q8dr47sxglh74ee0y5y9yhdd68rfc7s7rdr3s9e",
+            "tb1qkfkdlq4x83zweu2jhqqmkmxlnl4pqg3jh8rtyt",
+            "tb1q2jdve0nlq96cp5udsazky72483wsdfpfdkjlfs",
+            "tb1qp26dhmy8ynlvzu668sqqg75tmr0c9tdc46575s",
+            "tb1qkcexg7plcd2mllue58l3x6ltk9yfs5x2lfgela"
+        ],
+        "receiving": [
+            "tb1qavwp6m7jgx06mjyelnuzvwt7xa6gyz74czskv4",
+            "tb1q4jsrc40aql3r78ycsxcg6w2qewzxfgk6ftq9a2",
+            "tb1qfl0hgztrqwge23wf6stl2lr7x6a08cs9npv4x2",
+            "tb1qklxep8ppnnhe6mtqk26rz3y4pzg29uumkadvqk",
+            "tb1qszzhtuqv9nze84g0g38pzhn7ev5lgq8rvtt8c7",
+            "tb1qljl6c4scxefp9dmcnthkfrg5g9swt9ftvz7ktn",
+            "tb1q6n3du7gw5ffa895epzafmftdslj0qht3gh3pq5",
+            "tb1q38gea8uyy2s5gvdzfwys6839887rhxdw3qxv3l",
+            "tb1qyr439ul7h7rksq23pcz8x2rwallcypkjgsv0se",
+            "tb1qs6wn526pt6r9n3e9hmhlpckg5ucxkhpyclc7sx",
+            "tb1qmt2ahs6k3lrw70pvj942vnrrnvwp2lr799w670",
+            "tb1qna4jchqycqt36cx46j2zxpvyyk5yc228280dsc",
+            "tb1q0g96p0n24yne54cdzwvcy39g63knqdzyzye82k",
+            "tb1q9ffmqucmgqe5yfjyrj5r8trr5vcdzevm7t2h0v",
+            "tb1qg9n2dhclp5kezalupm8erakegc2dqywl8g7c2f",
+            "tb1qp5dmz90vzkmv9aa3x4kpp9cmgv0cptnhejymcf",
+            "tb1qrudrxjznkday7x5a7hulmrs0rpcun23l8jm867",
+            "tb1qz4t3wqtz8qhqpdq5dx7rskuqwmnf8u4jkpqewy",
+            "tb1q9rdyk5gsx7vnnxpyv9e45c8t3svq4q6tmltww6",
+            "tb1qp375l5pt842pq2hxjk4msga522vce2vtjp76ac",
+            "tb1qww62u0cn4flzdj9j7lqrk633qqstlcep2a3gef"
+        ]
+    },
+    "channels": {},
+    "db_metadata": {
+        "creation_timestamp": 1701198698,
+        "first_electrum_version_used": "4.4.6"
+    },
+    "fiat_value": {},
+    "frozen_coins": {},
+    "imported_channel_backups": {},
+    "invoices": {
+        "2f6d031804": {
+            "amount_msat": "!",
+            "bip70": null,
+            "exp": 0,
+            "height": 2540839,
+            "lightning_invoice": null,
+            "message": "",
+            "outputs": [
+                [
+                    0,
+                    "tb1qpppf3mekhh350hw8r45yx5nd5pef2h72qt4uh4",
+                    "!"
+                ]
+            ],
+            "time": 1701202476
+        }
+    },
+    "keystore": {
+        "derivation": "m/0h",
+        "pw_hash_version": 1,
+        "root_fingerprint": "8ba51973",
+        "seed": "twist tower maid private loyal educate such blast original income apology carpet",
+        "seed_type": "segwit",
+        "type": "bip32",
+        "xprv": "vprv9GG9gGtqXao9gFtW5R2QS8cv6gf1urQdMboGxXmaPxeHguCngqnpJvFEqecGthEcTJprfeXKxQgRLD95xuCxHWeKmgeSruDgq2uG7xmVUs6",
+        "xpub": "vpub5VFW5nRjMxMStjxyBSZQoGZeeiVWKK8UipiskvBBxJBGZhXwEP74riZigv9NKRthLZdKUQFLF6XT1u6CyX3Rgo8B3t5KTL4htYk7JgyUmyv"
+    },
+    "labels": {
+        "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622": "internal move a->b",
+        "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000": "internal move b->a",
+        "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507": "internal move a->b",
+        "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb": "spam"
+    },
+    "lightning_payments": {
+        "05f0ec2837d2df0311dd3d36b339e29a06b0c2c916acf64968cd72bff2cecfd8": [
+            0,
+            1,
+            0
+        ]
+    },
+    "lightning_preimages": {
+        "05f0ec2837d2df0311dd3d36b339e29a06b0c2c916acf64968cd72bff2cecfd8": "0968122649508b27db17c3663aaf19e0a6dc43ba57fe98d5e201053975719727"
+    },
+    "lightning_xprv": "vprv9JqBdDsd5XVox8WJuXgfVnpAsDi47exAN62UEFMMf7CVRohkbCHKMqZ2pnLceuciBkp9S9wQgrfEhgefKkvHUj2h4FMM5z8DqAjKAU468Ho",
+    "num_parents": {
+        "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507": 1,
+        "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb": 1
+    },
+    "onchain_channel_backups": {},
+    "payment_requests": {
+        "05f0ec2837d2df0311dd3d36b339e29a06b0c2c916acf64968cd72bff2cecfd8": {
+            "amount_msat": 0,
+            "bip70": null,
+            "exp": 86400,
+            "height": 2540836,
+            "message": "",
+            "outputs": [
+                [
+                    0,
+                    "tb1q4jsrc40aql3r78ycsxcg6w2qewzxfgk6ftq9a2",
+                    0
+                ]
+            ],
+            "payment_hash": "05f0ec2837d2df0311dd3d36b339e29a06b0c2c916acf64968cd72bff2cecfd8",
+            "time": 1701201837
+        }
+    },
+    "prevouts_by_scripthash": {
+        "0951b29fc4a51f7dfaca99249f6af4dd8a373cd05b8b14a73772820603d0f5be": [
+            [
+                "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622:0",
+                500
+            ],
+            [
+                "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507:0",
+                1000
+            ],
+            [
+                "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb:1",
+                100
+            ]
+        ],
+        "1e44731bfb7f4ade869e38fdd808567604880cb6e7b331170e559669dadbeef7": [
+            [
+                "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb:0",
+                100
+            ]
+        ],
+        "ba5512ce41a8c7c6a2261ee13d944a2e166c73bf20d9982680f331fb1e585aae": [
+            [
+                "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000:0",
+                390
+            ]
+        ],
+        "d3cb9972a16742eb6c66d3013a145863c3a467945448d03e1e6279c231f446c6": [
+            [
+                "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb:2",
+                6300
+            ]
+        ],
+        "f0a3536b28ce6f122139d8095d8fc8259bb71dcc1e2fa6e44990667ce2cab363": [
+            [
+                "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507:1",
+                5300
+            ]
+        ]
+    },
+    "qt-console-history": [],
+    "seed_version": 53,
+    "spent_outpoints": {
+        "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622": {
+            "0": "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000"
+        },
+        "19e06c33d6870057cad36ed17c45ec3fd95bfe4bf8802f26fe1c47b8b06c6805": {
+            "1": "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622"
+        },
+        "a358f7d4814f6a87236323aa2bfb05c117e53c6573d5ecb4b30444b36bdfea5d": {
+            "0": "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb"
+        },
+        "cb8e1ca8865f921eef861cd40ea9f29de1450fd1d922c4aa02e8acc83728dc1c": {
+            "1": "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507"
+        },
+        "fc62eb2e25bb44a146a93c75471f229ef79b93eac2e9307300b9fa6b28e481ee": {
+            "0": "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb"
+        }
+    },
+    "stored_height": 2580518,
+    "submarine_swaps": {},
+    "transactions": {
+        "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622": "0200000000010105686cb0b8471cfe262f80f84bfe5bd93fec457cd16ed3ca570087d6336ce0190100000000fdffffff01f401000000000000160014eb1c1d6fd2419fadc899fcf826397e3774820bd502473044022074ff720486662d84eceaf07b5e6ac868766672ea0a10ab006dff85210cdbc55e022069f9e5d1dc05a88f051b9bec34b0e95052963ada9518fceaecd5d287c4d5e80d012102a3d867acee1e663558a1cbdb2e574c345d49290b1c6763a83dbebafe25aa888923c52600",
+        "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000": "0200000000010122b66cafc437dd18859d66ab9544b24ec558dbd53ba1ad81f786e59866f412110000000000fdffffff018601000000000000160014084298ef36bde347ddc71d6843526da072955fca02473044022004d984b5d1931921ad5081c310a7c653710427d5dc3a92edc5fc8e9120771dbf022033b9f78a07a7415387ebecfa7da1050fb8d261d71d5877675436749928341ec9012102a23ff06bc6a0e5e8b255c2255c307258aecb4edfb765a6842e0763e9940932cc0dc52600",
+        "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507": "020000000001011cdc2837c8ace802aac422d9d10f45e19df2a90ed41c86ef1e925f86a81c8ecb0100000000fdffffff02e803000000000000160014eb1c1d6fd2419fadc899fcf826397e3774820bd5b414000000000000160014510a8c74c2378069c1343743b94a9f967e1719650247304402206bee6280af5c712e91f4aaaa58ed45ccef17390b3be990c8868dee021b4aab0502200366efe116963663375724bac5d90e9dacdd2be5d6365370b2a8304b90615a520121034e0a52d64f6dc961f4f2379d779803500b97cd5d130d3c509e558b6fde63ecab27c52600",
+        "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb": "020000000001025deadf6bb34404b3b4ecd573653ce517c105fb2baa236323876a4f81d4f758a30000000000fdffffffee81e4286bfab9007330e9c2ea939bf79e221f47753ca946a144bb252eeb62fc0000000000fdffffff036400000000000000160014ccc7f2b23727802bb108c63aff5ad78b298d1bd56400000000000000160014eb1c1d6fd2419fadc899fcf826397e3774820bd59c18000000000000160014f69ae17be105a5143f1ee6a67d0b005311022f5102473044022076d1fdc101d0e12dadda2f4c49109c1e441ed919d8727dfc0117994b530f1a68022051ba793b76de8c22fabcf3d5930906954b3ef4343bb07f11d011e01ced11f3b1012102a900d383486125527d76aebb5c017cda26ac67915a4c601f2422f57204d0a6cc02473044022057d842f8cebcbab9093e21fb9aebd4dd0c9bdd20077ad3efefa9c192605363b8022069a71de6723e5054f0b33b7cfbaf275b1fa1ba65fbf26ab8e580ec458496f9d8012102a900d383486125527d76aebb5c017cda26ac67915a4c601f2422f57204d0a6cc1f602700"
+    },
+    "tx_fees": {
+        "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622": [
+            null,
+            false,
+            1
+        ],
+        "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000": [
+            110,
+            true,
+            1
+        ],
+        "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507": [
+            null,
+            false,
+            1
+        ],
+        "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb": [
+            null,
+            false,
+            2
+        ]
+    },
+    "txi": {
+        "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000": {
+            "tb1qavwp6m7jgx06mjyelnuzvwt7xa6gyz74czskv4": {
+                "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622:0": 500
+            }
+        }
+    },
+    "txo": {
+        "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622": {
+            "tb1qavwp6m7jgx06mjyelnuzvwt7xa6gyz74czskv4": {
+                "0": [
+                    500,
+                    false
+                ]
+            }
+        },
+        "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507": {
+            "tb1qavwp6m7jgx06mjyelnuzvwt7xa6gyz74czskv4": {
+                "0": [
+                    1000,
+                    false
+                ]
+            }
+        },
+        "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb": {
+            "tb1qavwp6m7jgx06mjyelnuzvwt7xa6gyz74czskv4": {
+                "1": [
+                    100,
+                    false
+                ]
+            }
+        }
+    },
+    "use_encryption": false,
+    "verified_tx3": {
+        "1112f46698e586f781ada13bd5db58c54eb24495ab669d8518dd37c4af6cb622": [
+            2540836,
+            1701201162,
+            6,
+            "0000000000000006b69a324b624a8a1d8c404f12e595b1fcb554c3c156fb9312"
+        ],
+        "2192c1aef57f976db693d1444e9d1465db55f81624b8834689ced974e5532000": [
+            2540840,
+            1701202710,
+            40,
+            "0000000000000006f6ddf419ac242f7023692e1eed7581751c0c8e2423ec0afa"
+        ],
+        "33f312a2585e8df768b406c118bed170c8a87aebc9e0ae371faeb06b6e3e9507": [
+            2540841,
+            1701203517,
+            12,
+            "000000000000000911bc655b3cad7a478a2e41ea75b11905f2114335165aa8f8"
+        ],
+        "9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb": [
+            2580512,
+            1709574208,
+            294,
+            "0000000000003f5b860dbf9e6da15de4254e29bd89dd1682b6c98323638d2c86"
+        ]
+    },
+    "wallet_type": "standard",
+    "winpos-qt": [
+        185,
+        97,
+        840,
+        400
+    ]
+}

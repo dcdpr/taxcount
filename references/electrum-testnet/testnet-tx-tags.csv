@@ -1,0 +1,6 @@
+"tx_type","txid","exchange_rate_asset","exchange_rate","loan_id"
+"income","60575f03d3457dd8c67eed1c37ef6b6b7950a1ce109b300a6d770665bfaa9fe7","USD",100.00,""
+"income","19e06c33d6870057cad36ed17c45ec3fd95bfe4bf8802f26fe1c47b8b06c6805","USD",120.00,""
+"spend","fc62eb2e25bb44a146a93c75471f229ef79b93eac2e9307300b9fa6b28e481ee","USD",110.00,""
+"spend","a358f7d4814f6a87236323aa2bfb05c117e53c6573d5ecb4b30444b36bdfea5d","USD",110.00,""
+"spam","9d224467e583a809a49586fdb062dd3789f429d023444d151d52a71c439d73cb","USD",220.00,""

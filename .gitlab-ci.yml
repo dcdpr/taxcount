@@ -1,0 +1,92 @@
+rustup-update:
+  stage: .pre
+  needs: []
+  tags:
+    - shell-executor
+  script:
+    - rustc --version
+    - rustup update
+    - rustc --version
+
+cargo-check:
+  stage: build
+  needs: []
+  tags:
+    - shell-executor
+  script:
+    - cargo check --workspace --benches --examples --tests --all-features
+
+cargo-check:release:
+  stage: build
+  needs: []
+  tags:
+    - shell-executor
+  script:
+    - cargo check --workspace --benches --examples --tests --all-features --release
+
+cargo-deny:
+  stage: build
+  needs: []
+  tags:
+    - shell-executor
+  script:
+    - cargo install --locked cargo-deny --version 0.16.1
+    - cargo deny --locked --workspace check all
+
+cargo-machete:
+  stage: build
+  needs: []
+  tags:
+    - shell-executor
+  script:
+    - cargo install --locked cargo-machete --version 0.7.0
+    - cargo machete --with-metadata
+
+cargo-fmt:
+  stage: build
+  needs: ["cargo-check", "cargo-check:release", "cargo-deny", "cargo-machete"]
+  tags:
+    - shell-executor
+  script:
+    - cargo fmt --all -- --check
+
+cargo-doc:
+  stage: build
+  needs: ["cargo-check", "cargo-check:release", "cargo-deny", "cargo-machete"]
+  variables:
+    RUSTDOCFLAGS: "-D warnings"
+  tags:
+    - shell-executor
+  script:
+    - cargo doc --workspace --no-deps --all-features
+
+cargo-clippy:
+  stage: build
+  needs: ["cargo-check", "cargo-check:release", "cargo-deny", "cargo-machete"]
+  tags:
+    - shell-executor
+  script:
+    - cargo clippy --all --tests --all-features -- -D warnings
+
+cargo-test:
+  stage: test
+  tags:
+    - shell-executor
+  script:
+    - cargo test --workspace --all-features
+
+cargo-test:release:
+  stage: test
+  tags:
+    - shell-executor
+  script:
+    - cargo test --workspace --all-features --release
+
+cargo-loom-test:release:
+  stage: test
+  variables:
+    RUSTFLAGS: "--cfg loom"
+  tags:
+    - shell-executor
+  script:
+    - cargo test --package fett --all-features --tests --release

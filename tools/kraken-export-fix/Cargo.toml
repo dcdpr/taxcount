@@ -1,0 +1,15 @@
+[package]
+name = "kraken-export-fix"
+description = "Fix running balances in edited Kraken ledger exports"
+version = "0.1.0"
+authors = ["Jay Oster <jay@blipjoy.com>", "rgrant <rgrant@contract.design>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[dependencies]
+error-iter = "0.4"
+onlyargs = "0.2"
+onlyargs_derive = "0.2"
+taxcount = { version = "0.2", path = "../../" }
+thiserror = "2"

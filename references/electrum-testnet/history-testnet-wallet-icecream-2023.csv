@@ -1,0 +1,3 @@
+transaction_hash,label,confirmations,value,fiat_value,fee,fiat_fee,timestamp
+fc62eb2e25bb44a146a93c75471f229ef79b93eac2e9307300b9fa6b28e481ee,sold an ice cream cone,39679,0.000005,,,,2023-11-28 20:18:30
+a358f7d4814f6a87236323aa2bfb05c117e53c6573d5ecb4b30444b36bdfea5d,sold the ice cream shop,39678,0.0000625,,,,2023-11-28 20:31:57

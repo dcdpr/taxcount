@@ -1,0 +1,31 @@
+[package]
+name = "esploda"
+description = "Esplora client, sans I/O"
+version = "0.2.0"
+authors = ["Jay Oster <jay@blipjoy.com>", "rgrant <rgrant@contract.design>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[features]
+default = []
+bitcoind = ["dep:data-encoding", "dep:serde_json"]
+
+[dependencies]
+bitcoin = { version = "0.30", default-features = false, features = ["serde", "std"] }
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+http = "1"
+rust_decimal = "1"
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
+
+# Optional
+data-encoding = { version = "2", optional = true }
+serde_json = { version = "1", optional = true }
+
+[dev-dependencies]
+anyhow = "1"
+reqwest = { version = "0.12", features = ["json"] }
+ron = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+ureq = { version = "3", default-features = false, features = ["json", "native-tls"] }

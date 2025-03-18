@@ -1,0 +1,16 @@
+[package]
+name = "query-exchange-rates"
+description = "CLI tool to query the Taxcount exchange rates DB"
+version = "0.1.0"
+authors = ["Jay Oster <jay@blipjoy.com>", "rgrant <rgrant@contract.design>"]
+edition = "2021"
+publish = false
+license = "MPL-2.0"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+error-iter = "0.4"
+onlyargs = "0.2"
+onlyargs_derive = "0.2"
+taxcount = { version = "0.2", path = "../../" }
+thiserror = "2"
