@@ -110,6 +110,17 @@ curl --user "${BITCOIND_CREDENTIALS}"                                           
   http://127.0.0.1:18332/
 ```
 
+#### If You Are Not Connected
+
+If you have not set up any networking, then the network error will look like this:
+
+```
+Error: Wallet transaction resolution error
+  Caused by: Client error
+  Caused by: Esplora client error
+  Caused by: Error requesting TxId `feceb335210ee31662a8f251cfac24b605b51db3d53d10f436470e5f473a6fa3`: io: Connection refused
+```
+
 ### Bitcoin Backend Cache
 
 The backend APIs can be rather slow to resolve a large number of transactions.
