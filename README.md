@@ -33,7 +33,7 @@ declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
   * Mining income
   * Labor income
   * Lending activities
-* **CSV outout** - for Form 8949 fields
+* **CSV output** - for Form 8949 fields
 * **Non-US residency** - Puerto Rico residency is supported
 
 ### Technical Advantages
@@ -46,14 +46,14 @@ declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
 - **Zero need for basis averaging** - tracks every detail for complete accuracy (and satisfies [IRS Rev. Proc. 2024-28](https://www.irs.gov/irb/2024-31_irb#REV-PROC-2024-28)
 )
 - **Flexible wallet support** - generic wallet format included (for bitcoind spends), as well as Electrum and Ledger Live wallet formats
-- **International Currencies** - the archtecture is ready for trades in any fiat quote currency, and several are already included
+- **International Currencies** - the architecture is ready for trades in any fiat quote currency, and several are already included
 - **Extensive Testing** - testing strategy includes generative simulated data, but see [limitations](#a-temporary-tragedy)
 
 ### Exchange Support
 
 Currently reads exports from Kraken.com.
 
-### Lighning Network
+### Lightning Network
 
 TBD
 
@@ -94,7 +94,7 @@ supported backends are:
 
 ### Bitcoind Server
 
-Unless all your bitcoin transactions run throught your bitcoind, you
+Unless all your bitcoin transactions run through your bitcoind, you
 are going to want `-txindex` on your bitcoind.  That index takes some
 time to build, but as of early 2025 only costs about 65GB of disk space.
 The main downside from having it turned on is that you cannot also
@@ -109,7 +109,7 @@ that there is now a python script for generating the credentials:
 https://raw.githubusercontent.com/bitcoin/bitcoin/master/share/rpcauth/rpcauth.py
 
 If your bitcoind is remote, you will want to set up a local port using
-ssh port reditrection.
+ssh port redirection.
 
 After waiting for any local port redirection to be established, check
 the status.  Here is an invocation on the testnet 18332 port:
@@ -165,7 +165,7 @@ encrypted storage is your job.
 ### Mock Client
 
 The `struct MockClient` example in `src/imports/wallet/rs`
-demonstrates how to connet other blockchain providers to Taxcount.
+demonstrates how to connect other blockchain providers to Taxcount.
 
 ## Data Files
 
@@ -177,7 +177,7 @@ trade data, then you need to supply taxcount with their basis
 information using a bootstrapping process.
 
 When you spend coins or receive UTXOs as income from either mining or
-labor, mark the approprate transaction in the tx-tags file.
+labor, mark the appropriate transaction in the tx-tags file.
 
 ### Kraken Ledgers CSV
 
@@ -185,7 +185,7 @@ When you export historical data from Kraken, you can pick a "ledgers"
 and a "trades" CSV (beware the PDF option they just made the default -
 you need the CSV).  Taxcount primarily uses the ledger rows, since
 that is more declarative regarding assets entering and leaving your
-account.  However, some margin trades are underspecifed and also very
+account.  However, some margin trades are underspecified and also very
 small amounts can cause Kraken to "helpfully" [/s] elide rows, which
 further confuses parsing.  In order to resolve these matters, Taxcount
 also refers back to the user's intent as recorded in the trades file.
@@ -629,7 +629,7 @@ nor too complex.  Too simple and the model will be inadequate for
 testing the entire problem space.  Too complex and it will reinvent
 the system a second time.
 
-In taxcount's ledger parser property tests, there is an `ExchangeGen`
+In Taxcount's ledger parser property tests, there is an `ExchangeGen`
 that generates a sequence of ledger rows (the input type for the
 system under test) and simultaneously generates a sequence of expected
 rows (this is the model providing the expected outcome for the
@@ -684,5 +684,5 @@ final summary.
 
 ## Special Thanks
 
-Special thanks to Jay at Blipjoy, who brought a new Rustacean along on
+Special thanks to Jay at BlipJoy, who brought a new Rustacean along on
 a much longer ride than anticipated.
