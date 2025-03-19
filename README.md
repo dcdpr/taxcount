@@ -100,12 +100,13 @@ script:
 The Bitcoin backend is used to resolve Txids on the blockchain. The
 supported backends are:
 
-- Esplora (slightly more efficient) - configured with `ESPLORA_URL`
-  environment variable, defaults to `http://localhost:3000`
-- Bitcoind JSON-RPC - configured with `BITCOIND_URL` and
-  `BITCOIND_CREDENTIALS` environment variables.  If `BITCOIND_URL` is
-  set, it takes priority over Esplora. Unset it to use the Esplora
-  backend.
+- [Esplora](https://github.com/Blockstream/esplora) (slightly more efficient) -
+  configured with `ESPLORA_URL` environment variable, defaults to
+  `http://localhost:3000`
+- [bitcoind](/bitcoin/bitcoin) JSON-RPC - configured with
+  `BITCOIND_URL` and `BITCOIND_CREDENTIALS` environment variables.  If
+  `BITCOIND_URL` is set, it takes priority over Esplora. Unset it to
+  use the Esplora backend.
 
 ### Bitcoind Server
 
