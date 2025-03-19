@@ -2,19 +2,19 @@
 
 ## What is Taxcount?
 
-Taxcount is an open-source airgapped-network tax calculation tool
-designed specifically for Bitcoin traders filing US tax returns.  It
-generates data for IRS Form 8949 ("Sales and Other Dispositions of
-Capital Assets") which feeds into Schedule D ("Capital Gains and
-Losses") on your 1040.
+Taxcount counts up your gains and losses for US tax purposes.  It runs
+on an airgapped-network and helps Bitcoiners (both hodlers with wallet
+activity and bitcoin traders) fill out US IRS tax worksheet Form 8949,
+'Sales and other Dispositions of Capital Assets', for 1040 Schedule D,
+'Capital Gains and Losses"'.
 
-In general, when using Taxcount, your accounting job is to know which
-transactions were spends or labor income (which includes mining), and
-collect the wallet and exchange exports.  If, in the tax year of
-interest, you spent a
+In general, when using Taxcount, your accounting job is to collect and
+offer the exports from you wallets and exchanges, and then label any
+on-chain transactions that were spends or regular income (including
+mining).  If, in the tax year of interest, you spent a
 [UTXO](https://river.com/learn/terms/u/unspent-transaction-output-utxo/)
-that was not labor income, then Taxcount also has facilities for
-declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
+that was not earned in that year, then Taxcount also has facilities
+for declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
 
 ### Comprehensive Transaction Tracking
 
@@ -26,7 +26,7 @@ declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
 
 * **No cloud dependency** - connect to local bitcoind or Esplora
 * **Precise basis tracking** - with special attention to fees
-* **Multiple transaction types** - supported:
+* **Multiple transaction types** - supporting:
   * Spending
   * Trading gains/losses
   * Margin Trading gains/losses
@@ -60,6 +60,17 @@ TBD
 ### Overview slides
 
 See [Taxcount from 40,000 feet](doc/Taxcount-from-40kft.pdf) (PDF).
+
+## Special Thanks
+
+Special thanks to [Jay](https://github.com/parasyte) at [BlipJoy](https://blipjoy.com/), who
+brought a new Rustacean along on a much longer ride than anticipated.
+Your patience and expertise proved invaluable during countless
+pair-programming sessions over the years.  Your willingness to both
+teach and adapt made this journey not only productive but genuinely
+enjoyable.  While rgrant initially outlined the architectural vision, kept
+the Bitcoin mechanics grounded, and donated live test data, Jay's deep
+knowledge of Rust truly brought the vision to life.
 
 ## Getting Started
 
@@ -681,8 +692,3 @@ final summary.
 ### 2024-03-05 Bootstrap feature merged into main.
 
 ### 2025-03-18 Release to Github.
-
-## Special Thanks
-
-Special thanks to Jay at BlipJoy, who brought a new Rustacean along on
-a much longer ride than anticipated.
