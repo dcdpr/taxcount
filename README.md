@@ -76,6 +76,10 @@ knowledge of Rust truly brought the vision to life.
 
 ### Help
 
+If you do not have the `cargo` command, you will need to [install
+Rust](https://www.rust-lang.org/tools/install).  Then, compile the project
+and view its command line options:
+
 `cargo run -- --help`
 
 ### Your bitcoind RPC connection
