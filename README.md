@@ -19,7 +19,7 @@ for declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
 ### Comprehensive Transaction Tracking
 
 - **Multi-source integration** - process exchange trades and on-chain wallet transactions
-- **Basis tracking** - follow the purchase price of your Bitcoin through any number of wallet transfers and exchange round-trips
+- **Basis tracking** - follow the purchase price of your bitcoin through any number of wallet transfers and exchange round-trips
 - **Complete simulation** - runs a parallel model of all tax-year transactions across your entire Bitcoin ecosystem
 
 ### Key Features
