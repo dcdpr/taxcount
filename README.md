@@ -259,7 +259,8 @@ The only special situations we are aware of at the moment that might
 require `--input-basis` are airdrops and accounting reconciliation for
 UTXOs that you had lost and now don't want to feed back through
 bootstrapping.  We are likely to change bootstrapping to support
-reconciliation with checkpoint patches (#13).
+reconciliation with checkpoint patches ([issue
+#13](https://github.com/dcdpr/taxcount/issues/13)).
 
 ### Wallet Information
 
