@@ -6,26 +6,30 @@ Taxcount counts up your gains and losses for US tax purposes.  It runs
 on an airgapped-network and helps Bitcoiners (both hodlers with wallet
 activity and bitcoin traders) fill out US IRS tax worksheet Form 8949,
 'Sales and other Dispositions of Capital Assets', for 1040 Schedule D,
-'Capital Gains and Losses"'.
+'Capital Gains and Losses"'.  Taxcount is production-ready, and we are
+currently focusing on the user experience.
 
 In general, when using Taxcount, your accounting job is to collect and
 offer the exports from you wallets and exchanges, and then label any
 on-chain transactions that were spends or regular income (including
 mining).  If, in the tax year of interest, you spent a
 [UTXO](https://river.com/learn/terms/u/unspent-transaction-output-utxo/)
-that was not earned in that year, then Taxcount also has facilities
-for declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
+that was not earned or purchased in that year, then Taxcount also has
+facilities for declaring its original
+[basis](https://www.irs.gov/taxtopics/tc703).
 
 ### Comprehensive Transaction Tracking
 
-- **Multi-source integration** - process exchange trades and on-chain wallet transactions
-- **Basis tracking** - follow the purchase price of your bitcoin through any number of wallet transfers and exchange round-trips
-- **Complete simulation** - runs a parallel model of all tax-year transactions across your entire Bitcoin ecosystem
+- **Multi-source integration** - process exchange trades and on-chain
+  wallet transactions
+- **Basis tracking** - follow the purchase price of your bitcoin through
+  any number of wallet transfers and exchange round-trips
+- **Complete simulation** - runs a parallel model of all tax-year
+  transactions across your entire Bitcoin ecosystem
 
 ### Key Features
 
 * **No cloud dependency** - connect to local bitcoind or Esplora
-* **Precise basis tracking** - with special attention to fees
 * **Multiple transaction types** - supporting:
   * Spending
   * Trading gains/losses
@@ -33,21 +37,33 @@ for declaring its original [basis](https://www.irs.gov/taxtopics/tc703).
   * Mining income
   * Labor income
   * Lending activities
+  * more on the way
 * **CSV output** - for Form 8949 fields
 * **Non-US residency** - Puerto Rico residency is supported
 
 ### Technical Advantages
 
-- **100% Rust implementation** - no unsafe code
-- **Local Blockchain caching** - retrieve blocks and transactions over the network exactly once
-- **UTXO-level on-chain binning** - maximum accuracy
-- **FIFO exchange binning** - as required
-- **Handles Margin trades** - all trade types on the exchange are supported
-- **Zero need for basis averaging** - tracks every detail for complete accuracy (and satisfies [IRS Rev. Proc. 2024-28](https://www.irs.gov/irb/2024-31_irb#REV-PROC-2024-28)
-)
-- **Flexible wallet support** - generic wallet format included (for bitcoind spends), as well as Electrum and Ledger Live wallet formats
-- **International Currencies** - the architecture is ready for trades in any fiat quote currency, and several are already included
-- **Extensive Testing** - testing strategy includes generative simulated data, but see [limitations](#a-temporary-tragedy)
+- **Local blockchain caching** - retrieve blocks and transactions over
+  the network exactly once
+- **100% Rust implementation** - no unsafe code and no "[stringly
+  typed](https://wiki.c2.com/?StringlyTyped)" data
+- **Decimal arithmatic** - we are extremely persnickety about where
+  divides occur in the codebase
+- **Precise fee handling** - special attention paid to how fees affect
+  gains
+- **FIFO binning on the exchanges** - as required by IRS
+- **UTXO-level binning for on-chain transactions** - maximum accuracy
+- **Handles margin trades** - all trade types on the exchange are
+  supported
+- **Zero need for basis averaging** - tracks every detail for complete
+  accuracy (and satisfies [IRS
+  Rev. Proc. 2024-28](https://www.irs.gov/irb/2024-31_irb#REV-PROC-2024-28))
+- **Flexible wallet support** - generic wallet format included, as well
+  as Electrum and Ledger Live wallet formats, with more on the way
+- **International Currencies** - the architecture is ready for trades in
+  any fiat quote currency and any asset, with several already included
+- **Extensive testing** - testing strategy includes generative simulated
+  data, but see [limitations](#a-temporary-tragedy)
 
 ### Exchange Support
 
@@ -150,13 +166,13 @@ Error: Wallet transaction resolution error
 
 ### Bitcoin Backend Cache
 
-The backend APIs can be rather slow to resolve a large number of transactions.
-To avoid requesting the same information over and over, taxcount maintains
-a request cache for the chosen backend.
+The backend APIs can be rather slow to resolve a large number of
+transactions.  To avoid requesting the same information over and over,
+taxcount maintains a request cache for the chosen backend.
 
-After a successful taxcount invocation, the cache is written to the user's
-cache directory (shown in the table below), and the client is initialized
-with the cache at the start of each invocation.
+After a successful taxcount invocation, the cache is written to the
+user's cache directory (shown in the table below), and the client is
+initialized with the cache at the start of each invocation.
 
 The cache accumulates backend responses across all invocations.
 
@@ -168,7 +184,8 @@ Cache directories:
 | macOS    | `$HOME/Library/Caches/design.contract.DCD.taxcount` |
 | Windows  | `%LOCALAPPDATA%\DCD\taxcount\cache`                 |
 
-One memo file will be created for each backend (depending on which backend is used):
+One memo file will be created for each backend (depending on which
+backend is used):
 
 - `esplora_memo.ron`: Esplora backend.
 - `bitcoind_memo.ron`: Bitcoind backend.
@@ -201,7 +218,7 @@ When you export historical data from Kraken, you can pick a "ledgers"
 and a "trades" CSV (beware the PDF option they just made the default -
 you need the CSV).  Taxcount primarily uses the ledger rows, since
 that is more declarative regarding assets entering and leaving your
-account.  However, some margin trades are underspecified and also very
+account.  However, some **margin trades are underspecified** and also very
 small amounts can cause Kraken to "helpfully" [/s] elide rows, which
 further confuses parsing.  In order to resolve these matters, Taxcount
 also refers back to the user's intent as recorded in the trades file.
@@ -210,15 +227,20 @@ The fields are:
 
     "txid","refid","time","type","subtype","aclass","asset","amount","fee","balance"
 
-Since we standardized on those fields more have been added, but they don't affect parsing.
+Since we standardized on those ledger fields more have been added, but
+they don't affect parsing.
 
 ### Kraken Trades CSV
+
+As stated above, you need the trades file as well as the ledgers
+files.
 
 The fields are:
 
     "txid","ordertxid","pair","time","type","ordertype","price","cost","fee","vol","margin","misc","ledgers"
 
-Since we standardized on those fields more have been added, but they don't affect parsing.
+Since we standardized on those trades fields more have been added, but
+they don't affect parsing.
 
 ### Basis Information
 
@@ -236,16 +258,17 @@ using the three tactical tools:
 The only special situations we are aware of at the moment that might
 require `--input-basis` are airdrops and accounting reconciliation for
 UTXOs that you had lost and now don't want to feed back through
-bootstrapping.  If you think you need it then clean up your act; get
-away from airdrops and fix your bootstrap so you're not doing
-reconciliations all the time.
+bootstrapping.  We are likely to change bootstrapping to support
+reconciliation with checkpoint patches (#13).
 
 ### Wallet Information
 
-You need to offer, at minimum, an xpub.
+You need to offer, at minimum, an xpub.  For old wallets or special
+situations you can offer individual addresses.
 
-Unless you transferred from the exchange to your wallet first, you are
-also responsible for offering some amount of Basis Information.
+Unless you received your coins as income or transferred them from the
+exchange to your wallet, you are also responsible for offering some
+amount of Basis Information.
 
 ### Example Release Run
 
