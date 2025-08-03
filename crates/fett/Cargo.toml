@@ -1,10 +1,10 @@
 [package]
 name = "fett"
 description = "This is the way to do concurrent memoizing maps."
-authors = ["Jay Oster <jay@blipjoy.com>"]
 version = "0.1.0"
+repository = "https://github.com/dcdpr/taxcount"
+authors = ["Jay Oster <jay@blipjoy.com>"]
 edition = "2021"
-publish = false
 license = "MPL-2.0"
 
 [dependencies]
