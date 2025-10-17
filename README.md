@@ -10,7 +10,7 @@ activity and bitcoin traders) fill out US IRS tax worksheet Form 8949,
 currently focusing on the user experience.
 
 In general, when using Taxcount, your accounting job is to collect and
-offer the exports from you wallets and exchanges, and then label any
+offer the exports from your wallets and exchanges, and then label any
 on-chain transactions that were spends or regular income (including
 mining).  If, in the tax year of interest, you spent a
 [UTXO](https://river.com/learn/terms/u/unspent-transaction-output-utxo/)
