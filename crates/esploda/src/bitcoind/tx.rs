@@ -1,9 +1,9 @@
 use crate::esplora::{TxIn, TxOut};
-use bitcoin::{hash_types::TxMerkleNode, locktime::absolute::LockTime, pow::CompactTarget};
 use bitcoin::{BlockHash, ScriptBuf, Sequence, Txid, Witness};
+use bitcoin::{hash_types::TxMerkleNode, locktime::absolute::LockTime, pow::CompactTarget};
 use chrono::{DateTime, Utc};
 use data_encoding::HEXLOWER;
-use rust_decimal::{prelude::FromPrimitive as _, Decimal};
+use rust_decimal::{Decimal, prelude::FromPrimitive as _};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
@@ -210,10 +210,10 @@ impl Transaction {
         block_height: u32,
         previous_outputs: Vec<TxOut>,
     ) -> crate::esplora::Transaction {
-        let fee = previous_outputs.iter().map(|txo| txo.value).sum()
+        let fee: Decimal = previous_outputs.iter().map(|txo| txo.value).sum()
             - self.outputs.iter().map(|txo| txo.value).sum();
 
-        assert!(!fee.is_negative(), "Fee must never be negative");
+        assert!(!fee.is_sign_negative(), "Fee must never be negative");
 
         let mut previous_outputs = previous_outputs.into_iter();
         let inputs = self
