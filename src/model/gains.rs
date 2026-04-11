@@ -277,10 +277,7 @@ impl Display for CapGainsIncomeDetails<'_> {
         // Write the CSV header
         writeln!(
             f,
-            concat!(
-                // Columns A-D
-                r#""Ledger Row ID","Asset Name","Asset Amount","Proceeds""#,
-            )
+            r#""Ledger Row ID","Asset Name","Asset Amount","Proceeds""#
         )?;
 
         // Write CSV rows
@@ -427,7 +424,7 @@ impl Display for Sums {
         // Write the CSV header
         writeln!(
             f,
-            concat!(r#""","US Long Term","US Short Term","Non-US Long Term","Non-US Short Term""#,)
+            r#""","US Long Term","US Short Term","Non-US Long Term","Non-US Short Term""#,
         )?;
 
         let bona_fide_long = &self.gain_matrix.bona_fide_long;
