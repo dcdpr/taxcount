@@ -210,9 +210,10 @@ impl Transaction {
         block_height: u32,
         previous_outputs: Vec<TxOut>,
     ) -> crate::esplora::Transaction {
-        let fee: Decimal = previous_outputs.iter().map(|txo| txo.value).sum()
-            - self.outputs.iter().map(|txo| txo.value).sum();
+        let prev_outputs: Decimal = previous_outputs.iter().map(|txo| txo.value).sum();
+        let outputs: Decimal = self.outputs.iter().map(|txo| txo.value).sum();
 
+        let fee = prev_outputs - outputs;
         assert!(!fee.is_sign_negative(), "Fee must never be negative");
 
         let mut previous_outputs = previous_outputs.into_iter();
