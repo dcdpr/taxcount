@@ -20,7 +20,7 @@ jobs:
         uses: baptiste0928/cargo-install@v3
         with:
           crate: cargo-deny
-          version: "=0.16.1"
+          version: "=0.19.1"
       - name: Cargo deny
         run: cargo deny --locked --workspace check all
 
