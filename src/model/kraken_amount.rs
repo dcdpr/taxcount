@@ -825,6 +825,11 @@ impl UsdAmount {
         Self(FiatAmount(self.0 .0.max(other.0 .0)))
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_int(n: i64) -> Self {
+        Self(FiatAmount(Decimal::from(n)))
+    }
+
     /// A typed division between differing units.
     pub(crate) fn sub_divide(self, other: KrakenAmount) -> Self {
         // TODO: Rescale the `Decimal` value after division.

@@ -4,6 +4,10 @@ use crate::model::events::{GainPortion, GainTerm};
 use crate::model::kraken_amount::UsdAmount;
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
+use std::rc::Rc;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Debug)]
 pub struct CapGainsWorksheet {
@@ -605,6 +609,43 @@ impl CapGainsWorksheet {
         }
     }
 
+    pub fn pr_statement24_dates(&self) -> PrStatement24Dates {
+        let mut dates = PrStatement24Dates::default();
+
+        for row in &self.worksheet {
+            for detail in &row.trade_details {
+                let (is_long, basis_date) = match &detail.net_gain {
+                    GainTerm::LongUs(p) | GainTerm::LongBonaFide(p) => (true, p.basis_date),
+                    GainTerm::Long { us, .. } => (true, us.basis_date),
+                    GainTerm::ShortUs(p) | GainTerm::ShortBonaFide(p) => (false, p.basis_date),
+                    GainTerm::Short { us, .. } => (false, us.basis_date),
+                };
+
+                if is_long {
+                    dates.lt_earliest_acquired = Some(match dates.lt_earliest_acquired {
+                        Some(existing) => existing.min(basis_date),
+                        None => basis_date,
+                    });
+                    dates.lt_latest_sold = Some(match dates.lt_latest_sold {
+                        Some(existing) => existing.max(row.event_date),
+                        None => row.event_date,
+                    });
+                } else {
+                    dates.st_earliest_acquired = Some(match dates.st_earliest_acquired {
+                        Some(existing) => existing.min(basis_date),
+                        None => basis_date,
+                    });
+                    dates.st_latest_sold = Some(match dates.st_latest_sold {
+                        Some(existing) => existing.max(row.event_date),
+                        None => row.event_date,
+                    });
+                }
+            }
+        }
+
+        dates
+    }
+
     pub fn sums(&self) -> Sums {
         let ledger_proceeds = self
             .worksheet
@@ -899,5 +940,148 @@ impl GainMatrixLong {
         let carryover = self.position_fees - self.position_fees_min;
 
         (gains, carryover)
+    }
+}
+
+/// Newtype for worksheet names used in PR Statement-24.
+#[derive(Clone, Debug)]
+pub struct WorksheetName(String);
+
+impl From<String> for WorksheetName {
+    fn from(name: String) -> Self {
+        Self(name)
+    }
+}
+
+impl Display for WorksheetName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Collected trade dates per (worksheet, LT/ST) for PR Statement-24.
+#[derive(Debug, Default)]
+pub struct PrStatement24Dates {
+    pub lt_earliest_acquired: Option<DateTime<Utc>>,
+    pub lt_latest_sold: Option<DateTime<Utc>>,
+    pub st_earliest_acquired: Option<DateTime<Utc>>,
+    pub st_latest_sold: Option<DateTime<Utc>>,
+}
+
+/// One row of PR Statement-24 (F1 Part III statement 24 :: capital gains).
+#[derive(Debug)]
+struct PrStatement24Row {
+    description: Rc<str>,
+    date_acquired: DateTime<Utc>,
+    date_sold: DateTime<Utc>,
+    sale_price: UsdAmount,
+    market_value: UsdAmount,
+    adjusted_basis: UsdAmount,
+    gain_or_loss: UsdAmount,
+    us_gain: UsdAmount,
+    pr_gain: UsdAmount,
+}
+
+/// PR Statement-24 report containing rows for each (worksheet, LT/ST) with bona fide data.
+#[derive(Debug)]
+pub struct PrStatement24 {
+    rows: Vec<PrStatement24Row>,
+}
+
+impl PrStatement24 {
+    pub fn empty() -> Self {
+        Self { rows: Vec::new() }
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        self.rows.extend(other.rows);
+    }
+
+    /// Build Statement-24 rows from a single worksheet's Sums and collected dates.
+    pub fn from_worksheet(
+        worksheet_name: &WorksheetName,
+        sums: &Sums,
+        dates: &PrStatement24Dates,
+    ) -> Self {
+        let mut rows = Vec::new();
+
+        if let (Some(pr_gain), Some(bona_fide_long), Some(date_acquired), Some(date_sold)) = (
+            sums.gains_bona_fide_long,
+            &sums.gain_matrix.bona_fide_long,
+            dates.lt_earliest_acquired,
+            dates.lt_latest_sold,
+        ) {
+            let us_gain = sums.gains_us_long;
+            let sale_price = bona_fide_long.trade_proceeds;
+            let gain_or_loss = us_gain + pr_gain;
+            let market_value = sale_price - pr_gain;
+            let adjusted_basis = sale_price - gain_or_loss;
+
+            rows.push(PrStatement24Row {
+                description: Rc::from(format!("investment assets {worksheet_name} LT").as_str()),
+                date_acquired,
+                date_sold,
+                sale_price,
+                market_value,
+                adjusted_basis,
+                gain_or_loss,
+                us_gain,
+                pr_gain,
+            });
+        }
+
+        if let (Some(pr_gain), Some(bona_fide_short), Some(date_acquired), Some(date_sold)) = (
+            sums.gains_bona_fide_short,
+            &sums.gain_matrix.bona_fide_short,
+            dates.st_earliest_acquired,
+            dates.st_latest_sold,
+        ) {
+            let us_gain = sums.gains_us_short;
+            let sale_price = bona_fide_short.trade_proceeds;
+            let gain_or_loss = us_gain + pr_gain;
+            let market_value = sale_price - pr_gain;
+            let adjusted_basis = sale_price - gain_or_loss;
+
+            rows.push(PrStatement24Row {
+                description: Rc::from(format!("investment assets {worksheet_name} ST").as_str()),
+                date_acquired,
+                date_sold,
+                sale_price,
+                market_value,
+                adjusted_basis,
+                gain_or_loss,
+                us_gain,
+                pr_gain,
+            });
+        }
+
+        Self { rows }
+    }
+}
+
+impl Display for PrStatement24 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            r#""Property Description","Date Acquired","Date Sold","A: Sale Price","B: Market Value","C: Adjusted Basis","D: Gain or Loss","E: US-Sourced Gain","F: PR-Sourced Gain""#
+        )?;
+
+        for row in &self.rows {
+            writeln!(
+                f,
+                r#""{description}","{date_acquired}","{date_sold}","{sale_price}","{market_value}","{adjusted_basis}","{gain_or_loss}","{us_gain}","{pr_gain}""#,
+                description = row.description,
+                date_acquired = row.date_acquired.format("%F"),
+                date_sold = row.date_sold.format("%F"),
+                sale_price = row.sale_price,
+                market_value = row.market_value,
+                adjusted_basis = row.adjusted_basis,
+                gain_or_loss = row.gain_or_loss,
+                us_gain = row.us_gain,
+                pr_gain = row.pr_gain,
+            )?;
+        }
+
+        Ok(())
     }
 }
