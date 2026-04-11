@@ -1,7 +1,7 @@
 [package]
 name = "esploda"
 description = "Esplora client, sans I/O"
-version = "0.2.0"
+version = "0.2.1"
 repository = "https://github.com/dcdpr/taxcount"
 authors = ["Jay Oster <jay@blipjoy.com>", "rgrant <rgrant@contract.design>"]
 edition = "2021"
