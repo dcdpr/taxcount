@@ -4,7 +4,6 @@ use crate::model::events::{GainPortion, GainTerm};
 use crate::model::kraken_amount::UsdAmount;
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
-use std::rc::Rc;
 
 #[cfg(test)]
 mod tests;
@@ -971,7 +970,7 @@ pub struct PrStatement24Dates {
 /// One row of PR Statement-24 (F1 Part III statement 24 :: capital gains).
 #[derive(Debug)]
 struct PrStatement24Row {
-    description: Rc<str>,
+    description: String,
     date_acquired: DateTime<Utc>,
     date_sold: DateTime<Utc>,
     sale_price: UsdAmount,
@@ -1018,7 +1017,7 @@ impl PrStatement24 {
             let adjusted_basis = sale_price - gain_or_loss;
 
             rows.push(PrStatement24Row {
-                description: Rc::from(format!("investment assets {worksheet_name} LT").as_str()),
+                description: format!("investment assets {worksheet_name} LT"),
                 date_acquired,
                 date_sold,
                 sale_price,
@@ -1043,7 +1042,7 @@ impl PrStatement24 {
             let adjusted_basis = sale_price - gain_or_loss;
 
             rows.push(PrStatement24Row {
-                description: Rc::from(format!("investment assets {worksheet_name} ST").as_str()),
+                description: format!("investment assets {worksheet_name} ST"),
                 date_acquired,
                 date_sold,
                 sale_price,
