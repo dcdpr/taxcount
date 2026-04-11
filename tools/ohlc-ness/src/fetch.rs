@@ -6,9 +6,6 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum FetchError {
-    #[error("Floating point parsing error")]
-    ParseFloat(#[from] std::num::ParseFloatError),
-
     #[error("Date parsing error")]
     ParseDate(#[from] chrono::ParseError),
 
