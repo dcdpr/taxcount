@@ -1,9 +1,9 @@
 use crate::esplora::{TxIn, TxOut};
-use bitcoin::{BlockHash, ScriptBuf, Sequence, Txid, Witness};
 use bitcoin::{hash_types::TxMerkleNode, locktime::absolute::LockTime, pow::CompactTarget};
+use bitcoin::{BlockHash, ScriptBuf, Sequence, Txid, Witness};
 use chrono::{DateTime, Utc};
 use data_encoding::HEXLOWER;
-use rust_decimal::{Decimal, prelude::FromPrimitive as _};
+use rust_decimal::{prelude::FromPrimitive as _, Decimal};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::str::FromStr;
