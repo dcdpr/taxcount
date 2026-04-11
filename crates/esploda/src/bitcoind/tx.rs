@@ -200,7 +200,9 @@ impl Transaction {
     ///
     /// # Panics
     ///
-    /// Asserts that `previous_outputs` and `self.inputs` have the same number of non-coinbase TXOs.
+    /// - Asserts that the computed `fee` is not negative.
+    /// - Asserts that `previous_outputs` and `self.inputs` have the same number of non-coinbase
+    ///   TXOs.
     ///
     /// [`esplora::Transaction`]: crate::esplora::Transaction
     pub fn into_esplora(
@@ -208,7 +210,11 @@ impl Transaction {
         block_height: u32,
         previous_outputs: Vec<TxOut>,
     ) -> crate::esplora::Transaction {
-        let fee = previous_outputs.iter().map(|txo| txo.value).sum();
+        let fee = previous_outputs.iter().map(|txo| txo.value).sum()
+            - self.outputs.iter().map(|txo| txo.value).sum();
+
+        assert!(!fee.is_negative(), "Fee must never be negative");
+
         let mut previous_outputs = previous_outputs.into_iter();
         let inputs = self
             .inputs
