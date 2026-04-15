@@ -18,8 +18,10 @@ use taxcount::client::{bitcoind::BitcoindClient, esplora::EsploraClient, Client}
 use taxcount::errors::{BitcoindClientError, EsploraClientError};
 use taxcount::imports::kraken::{read_basis_lookup, read_ledgers, read_trades};
 use taxcount::imports::wallet::{self, electrum, ledgerlive};
-use taxcount::model::{constants, CapGainsWorksheet, ExchangeRates, GainConfig, State, Stats};
-use taxcount::model::{exchange::Balances, ledgers::parsed::LedgerParsed};
+use taxcount::model::{constants, exchange::Balances, ledgers::parsed::LedgerParsed};
+use taxcount::model::{
+    CapGainsWorksheet, ExchangeRates, GainConfig, PrStatement24, State, Stats, WorksheetName,
+};
 use taxcount::util::{fifo::FIFO, year_ext::CheckYearsExt as _};
 use taxcount::{bdk::bitcoin::Network, gitver_hashes};
 use thiserror::Error;
@@ -494,6 +496,8 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
         gitver_hashes::print_all();
     }
 
+    let mut pr_statement24_rows: Vec<PrStatement24> = Vec::new();
+
     for (worksheet_name, events) in worksheets.into_iter() {
         let underline = "=".repeat(worksheet_name.len());
         println!("Worksheet {worksheet_name}");
@@ -662,7 +666,41 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
         }
 
         sums.assert_error_check();
+
+        if bona_fide_residency.is_some() {
+            let dates = worksheet.pr_statement24_dates();
+            let name = WorksheetName::from(worksheet_name.to_string());
+            let statement = PrStatement24::from_worksheet(&name, &sums, &dates);
+            pr_statement24_rows.push(statement);
+        }
     }
+
+    if bona_fide_residency.is_some() && !pr_statement24_rows.is_empty() {
+        let mut all_rows = PrStatement24::empty();
+        for statement in pr_statement24_rows {
+            all_rows.extend(statement);
+        }
+
+        if let Some(path) = args.worksheet_path.as_ref().map(|root| {
+            let filename = format!("{}pr-statement24.csv", args.worksheet_prefix);
+            root.join(filename)
+        }) {
+            std::fs::write(&path, all_rows.to_string())?;
+
+            let path = path.display();
+            let underline = "=".repeat(path.to_string().len());
+            println!("PR Statement-24 written to {path}");
+            println!("== ============ ======= == {underline}");
+            println!();
+        } else {
+            println!("PR Statement-24");
+            println!("== ============");
+            println!();
+            println!("{all_rows}");
+            println!();
+        }
+    }
+
     check_pending(&state);
     stats.pretty_print();
 
