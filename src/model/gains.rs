@@ -1062,13 +1062,21 @@ impl Display for PrStatement24 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(
             f,
-            r#""Property Description","Date Acquired","Date Sold","A: Sale Price","B: Market Value","C: Adjusted Basis","D: Gain or Loss","E: US-Sourced Gain","F: PR-Sourced Gain""#
+            concat!(
+                r#""Property Description","Date Acquired","Date Sold","A: Sale Price","#,
+                r#""B: Market Value","C: Adjusted Basis","D: Gain or Loss","E: US-Sourced Gain","#,
+                r#""F: PR-Sourced Gain""#,
+            ),
         )?;
 
         for row in &self.rows {
             writeln!(
                 f,
-                r#""{description}","{date_acquired}","{date_sold}","{sale_price}","{market_value}","{adjusted_basis}","{gain_or_loss}","{us_gain}","{pr_gain}""#,
+                concat!(
+                    r#""{description}","{date_acquired}","{date_sold}","{sale_price}","#,
+                    r#""{market_value}","{adjusted_basis}","{gain_or_loss}","{us_gain}","#,
+                    r#""{pr_gain}""#,
+                ),
                 description = row.description,
                 date_acquired = row.date_acquired.format("%F"),
                 date_sold = row.date_sold.format("%F"),

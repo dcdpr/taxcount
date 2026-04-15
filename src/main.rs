@@ -18,11 +18,10 @@ use taxcount::client::{bitcoind::BitcoindClient, esplora::EsploraClient, Client}
 use taxcount::errors::{BitcoindClientError, EsploraClientError};
 use taxcount::imports::kraken::{read_basis_lookup, read_ledgers, read_trades};
 use taxcount::imports::wallet::{self, electrum, ledgerlive};
+use taxcount::model::{constants, exchange::Balances, ledgers::parsed::LedgerParsed};
 use taxcount::model::{
-    constants, CapGainsWorksheet, ExchangeRates, GainConfig, PrStatement24, State, Stats,
-    WorksheetName,
+    CapGainsWorksheet, ExchangeRates, GainConfig, PrStatement24, State, Stats, WorksheetName,
 };
-use taxcount::model::{exchange::Balances, ledgers::parsed::LedgerParsed};
 use taxcount::util::{fifo::FIFO, year_ext::CheckYearsExt as _};
 use taxcount::{bdk::bitcoin::Network, gitver_hashes};
 use thiserror::Error;
