@@ -613,32 +613,18 @@ impl CapGainsWorksheet {
 
         for row in &self.worksheet {
             for detail in &row.trade_details {
-                let (is_long, basis_date) = match &detail.net_gain {
-                    GainTerm::LongUs(p) | GainTerm::LongBonaFide(p) => (true, p.basis_date),
-                    GainTerm::Long { us, .. } => (true, us.basis_date),
-                    GainTerm::ShortUs(p) | GainTerm::ShortBonaFide(p) => (false, p.basis_date),
-                    GainTerm::Short { us, .. } => (false, us.basis_date),
-                };
-
-                if is_long {
-                    dates.lt_earliest_acquired = Some(match dates.lt_earliest_acquired {
-                        Some(existing) => existing.min(basis_date),
-                        None => basis_date,
-                    });
-                    dates.lt_latest_sold = Some(match dates.lt_latest_sold {
-                        Some(existing) => existing.max(row.event_date),
-                        None => row.event_date,
-                    });
-                } else {
-                    dates.st_earliest_acquired = Some(match dates.st_earliest_acquired {
-                        Some(existing) => existing.min(basis_date),
-                        None => basis_date,
-                    });
-                    dates.st_latest_sold = Some(match dates.st_latest_sold {
-                        Some(existing) => existing.max(row.event_date),
-                        None => row.event_date,
-                    });
+                dates.update(&detail.net_gain, row.event_date);
+            }
+            for fee in &row.tx_fees {
+                dates.update(&fee.net_loss, row.event_date);
+            }
+            for detail in &row.position_details {
+                if detail.proceeds_bona_fide.is_some() {
+                    dates.update_short(row.event_date, row.event_date);
                 }
+            }
+            for fee in &row.position_fees {
+                dates.update(&fee.net_loss, row.event_date);
             }
         }
 
@@ -965,6 +951,41 @@ pub struct PrStatement24Dates {
     pub lt_latest_sold: Option<DateTime<Utc>>,
     pub st_earliest_acquired: Option<DateTime<Utc>>,
     pub st_latest_sold: Option<DateTime<Utc>>,
+}
+
+impl PrStatement24Dates {
+    fn update(&mut self, gain_term: &GainTerm, event_date: DateTime<Utc>) {
+        let (is_long, basis_date) = match gain_term {
+            GainTerm::LongUs(p) | GainTerm::LongBonaFide(p) => (true, p.basis_date),
+            GainTerm::Long { us, .. } => (true, us.basis_date),
+            GainTerm::ShortUs(p) | GainTerm::ShortBonaFide(p) => (false, p.basis_date),
+            GainTerm::Short { us, .. } => (false, us.basis_date),
+        };
+
+        if is_long {
+            self.lt_earliest_acquired = Some(match self.lt_earliest_acquired {
+                Some(existing) => existing.min(basis_date),
+                None => basis_date,
+            });
+            self.lt_latest_sold = Some(match self.lt_latest_sold {
+                Some(existing) => existing.max(event_date),
+                None => event_date,
+            });
+        } else {
+            self.update_short(basis_date, event_date);
+        }
+    }
+
+    fn update_short(&mut self, basis_date: DateTime<Utc>, event_date: DateTime<Utc>) {
+        self.st_earliest_acquired = Some(match self.st_earliest_acquired {
+            Some(existing) => existing.min(basis_date),
+            None => basis_date,
+        });
+        self.st_latest_sold = Some(match self.st_latest_sold {
+            Some(existing) => existing.max(event_date),
+            None => event_date,
+        });
+    }
 }
 
 /// One row of PR Statement-24 (F1 Part III statement 24 :: capital gains).
