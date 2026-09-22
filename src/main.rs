@@ -14,14 +14,14 @@ use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::{env, process::ExitCode, rc::Rc};
 use taxcount::basis::{AssetName, CheckList};
-use taxcount::client::{Client, bitcoind::BitcoindClient, esplora::EsploraClient};
+use taxcount::client::{bitcoind::BitcoindClient, esplora::EsploraClient, Client};
 use taxcount::errors::{BitcoindClientError, EsploraClientError};
 use taxcount::imports::kraken::{read_basis_lookup, read_ledgers, read_trades};
 use taxcount::imports::wallet::{self, electrum, ledgerlive};
+use taxcount::model::{constants, exchange::Balances, ledgers::parsed::LedgerParsed};
 use taxcount::model::{
     CapGainsWorksheet, ExchangeRates, GainConfig, PrStatement24, State, Stats, WorksheetName,
 };
-use taxcount::model::{constants, exchange::Balances, ledgers::parsed::LedgerParsed};
 use taxcount::util::{fifo::FIFO, year_ext::CheckYearsExt as _};
 use taxcount::{bdk::bitcoin::Network, gitver_hashes};
 use thiserror::Error;
