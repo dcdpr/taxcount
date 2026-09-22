@@ -731,6 +731,28 @@ impl EventAtom {
             })
         }
     }
+
+    /// The name of this atom.
+    pub(crate) fn name(&self) -> &'static str {
+        match self {
+            Self::Trade { .. } => "Trade",
+            Self::Income { .. } => "Income",
+            Self::Position { .. } => "Position",
+            Self::Fee { .. } => "Fee",
+            Self::InvestmentFee { .. } => "Investment Fee",
+        }
+    }
+
+    /// The atom's asset amount.
+    pub(crate) fn asset_amount(&self) -> KrakenAmount {
+        match self {
+            Self::Trade { asset_amount, .. }
+            | Self::Income { asset_amount, .. }
+            | Self::Position { asset_amount, .. }
+            | Self::Fee { asset_amount, .. }
+            | Self::InvestmentFee { asset_amount, .. } => *asset_amount,
+        }
+    }
 }
 
 impl std::fmt::Display for EventSubType {
