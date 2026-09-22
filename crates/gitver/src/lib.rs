@@ -198,8 +198,12 @@ pub fn git_assert_clean(pathspec: impl AsRef<Path>) {
             lines
         );
         #[cfg(debug_assertions)]
-        eprintln!("warning: Git status unclean.  Allowing for debug build.\n  cwd: {}\n  pathspec: {}\n  dirty:\n{}",
-                 cwd.display(), pathspec.display(), lines);
+        eprintln!(
+            "warning: Git status unclean.  Allowing for debug build.\n  cwd: {}\n  pathspec: {}\n  dirty:\n{}",
+            cwd.display(),
+            pathspec.display(),
+            lines
+        );
     }
 }
 
@@ -274,9 +278,9 @@ impl Display for GitverHashes {
                 f,
                 "git {trimmed_path:>path_width$} : {commit:.commit_width$}/{tree:.commit_width$}/{sha256:.hash_width$}",
                 trimmed_path = trimmed_path,
-                commit = &gh.commit,
-                tree = &gh.tree,
-                sha256 = &gh.sha256,
+                commit = gh.commit,
+                tree = gh.tree,
+                sha256 = gh.sha256,
             )?;
         }
 
