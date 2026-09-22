@@ -24,8 +24,9 @@ pub struct Event {
     // for manipulating the PoolAsset FIFOs. See: https://gl1.dcdpr.com/rgrant/taxcount/-/issues/59
     pub(crate) is_withdrawal: bool,
 
-    /// Zero or more detail atoms (may span multiple asset splits). Trade and fee atoms carry a
-    /// cost basis; position atoms do not, because the asset is loaned.
+    /// Zero or more detail atoms (may span multiple asset splits).
+    ///
+    /// Trade and fee atoms have a cost basis, position atoms do not.
     pub(crate) event_details: Vec<EventAtom>,
 }
 
@@ -45,10 +46,13 @@ pub(crate) struct EventInfo {
 
 /// Atomized details for a taxable event.
 ///
-/// Every taxable event detail is recorded as an atom in the single
-/// [`Event::event_details`] list: trade atoms for disposed assets, income atoms for received
-/// assets, position atoms for loaned assets (margin positions), fee atoms for fees paid from the
-/// pool, and investment fee atoms for margin position rollovers (investment interest expenses).
+/// Every taxable event detail is recorded as an atom in the [`Event::event_details`] list:
+///
+/// - Trade atoms for disposed assets
+/// - Income atoms for received assets
+/// - Position atoms for loaned assets (margin positions)
+/// - Fee atoms for fees paid from the pool
+/// - Investment fee atoms for margin position rollovers (investment interest expenses)
 #[derive(Clone, Debug)]
 pub(crate) enum EventAtom {
     /// The taxable asset (outgoing) is disposed of in a trade.
@@ -327,13 +331,11 @@ impl Event {
 
     /// Add a fee atom for each pool split consumed as a fee by this event.
     ///
-    /// Each fee atom's `proceeds` is the fee amount × `fee_rate`. When `fee_rate` is `None`
-    /// (the event has no defined rate covering the fee asset), the fee asset's market rate at
-    /// the event date-time is used. Returns the sum of all fee atoms' proceeds, along with any
-    /// exchange rate errors.
+    /// Each fee atom's `proceeds` is the fee amount times `fee_rate`. When `fee_rate` is `None`
+    /// (the event has no defined rate covering the fee asset), the fee asset's market rate at the
+    /// event date-time is used.
     ///
-    /// The atom type is determined by the event subtype: margin position rollovers create
-    /// investment fee atoms (investment interest expenses); all other fees create fee atoms.
+    /// Returns the sum of all fee atoms' proceeds, along with any exchange rate errors.
     pub(crate) fn add_fee<A>(
         &mut self,
         split_assets: Vec<PoolAssetNonSplittable<A>>,
@@ -408,8 +410,8 @@ impl Event {
         // split).
         let fee_value_per_unit = fee_value.sub_divide(total_amount);
 
-        // Find the last trade atom so any rounding difference lands there and the reductions
-        // sum to exactly `fee_value`.
+        // Find the last trade atom so any rounding difference lands there and the reductions sum
+        // to exactly `fee_value`.
         let last_trade = self
             .event_details
             .iter()
@@ -477,6 +479,19 @@ impl EventInfo {
 }
 
 impl EventAtom {
+    /// Build a trade atom from a consumed pool split.
+    ///
+    /// `proceeds` is the disposed amount times the event's `asset_out_exchange_rate`.
+    ///
+    /// `net_gain` is `proceeds` minus the split's cost basis. The cost basis is the amount times
+    /// the acquisition rate. The gain is classified by the split's basis date: short-term or
+    /// long-term against the event date, US or territory against the bona fide residency date.
+    ///
+    /// When the basis date is before the move date and the event date is not, the gain is split
+    /// at the coin's move-date value. The US portion is the gain accrued to the move date. The
+    /// territory portion is the gain from the move date to the sale, re-based at the move date.
+    ///
+    /// Disposed amounts are recorded negative.
     fn trade_from_split<A>(
         split: PoolAssetNonSplittable<A>,
         event_info: &EventInfo,
@@ -511,10 +526,10 @@ impl EventAtom {
             let (us, bona_fide) = match gain_config.bona_fide_residency {
                 Some(move_date) => {
                     if event_info.event_date < move_date {
-                        // Gain is allocated as US-sourced gains
+                        // Gain is allocated as US-sourced gains.
                         (Some(total_net_gain), None)
                     } else if basis_date < move_date {
-                        // Split the total gain between US-sourced and Territory-sourced gains
+                        // Split the total gain between US-sourced and Territory-sourced gains.
                         let bona_fide_basis = asset_amount.get_value_usd(
                             asset_amount
                                 .get_exchange_rate(move_date, &gain_config.exchange_rates_db)?,
@@ -540,8 +555,8 @@ impl EventAtom {
                 None => (Some(total_net_gain), None),
             };
 
-            // The short-term/long-term threshold for capital gains is one year
-            // This subtraction clamps February 29th (leap year) to February 28th
+            // The short-term/long-term threshold for capital gains is one year.
+            // This subtraction clamps February 29th (leap year) to February 28th.
             let is_long_term = basis_date < event_info.event_date - Months::new(12);
 
             match (is_long_term, us, bona_fide) {
@@ -562,6 +577,13 @@ impl EventAtom {
         })
     }
 
+    /// Build an income atom from a received pool split.
+    ///
+    /// `proceeds` is the received amount times the event's `asset_in_exchange_rate`.
+    ///
+    /// Income atoms hold no cost basis or net gain: receiving income is not a disposal. The coin
+    /// enters the pool with its receipt value as cost basis, so a later disposal is taxed as a
+    /// capital gain from that basis.
     fn income_from_split<A>(
         split: &PoolAsset<A>,
         event_info: &EventInfo,
@@ -576,12 +598,22 @@ impl EventAtom {
                 .asset_in_exchange_rate
                 .expect("Exchange rate is required"),
         );
+
         Ok(Self::Income {
             asset_amount,
             proceeds,
         })
     }
 
+    /// Build a position atom for a loaned asset (margin position).
+    ///
+    /// `proceeds` is the loaned amount times the event's `asset_in_exchange_rate`.
+    ///
+    /// The proceeds are US-sourced when the event date is before the bona fide residency move date,
+    /// and bona fide from the move date onward. Loaned assets have no acquisition date, so
+    /// residency at the time of the loan determines the sourcing.
+    ///
+    /// Position atoms hold no cost basis or net gain: the asset is loaned, not purchased.
     fn position_from_kraken_amount(
         asset_amount: KrakenAmount,
         event_info: &EventInfo,
@@ -613,11 +645,12 @@ impl EventAtom {
 
     /// Build a fee atom from a consumed pool split.
     ///
-    /// `proceeds` is the fee's USD value at the moment of payment (`fee_rate`). `net_gain` is
-    /// that value minus the fee coin's cost basis, classified by the fee coin's basis date
-    /// (short-term/long-term against the event date, US/territory against the bona fide
-    /// residency date). Margin position rollovers become investment fee atoms (investment
-    /// interest expenses); all other fees become fee atoms.
+    /// `proceeds` is the fee's USD value at the moment of payment (`fee_rate`).
+    ///
+    /// `net_gain` is that value minus the fee coin's cost basis, classified by the fee coin's basis
+    /// date (short-term/long-term against the event date, US/territory against the bona fide
+    /// residency date). Margin position rollovers become investment fee atoms (investment interest
+    /// expenses). All other fees become fee atoms.
     fn from_fee_split<A>(
         split: PoolAssetNonSplittable<A>,
         event_info: &EventInfo,

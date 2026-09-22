@@ -538,7 +538,7 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
                 println!();
             } else if args.verbose {
                 println!("Cap Gains Event Details");
-                println!("=== ===== ===== ======= ======= ======= =======");
+                println!("=== ===== ===== =======");
                 println!();
                 println!("{details}");
                 println!();
@@ -555,11 +555,11 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
                 let path = path.display();
                 let underline = "=".repeat(path.to_string().len());
                 println!("Cap Gains Fee Details written to {path}");
-                println!("=== ===== ======= ======= == {underline}");
+                println!("=== ===== === ======= ======= == {underline}");
                 println!();
             } else if args.verbose {
                 println!("Cap Gains Fee Details");
-                println!("=== ===== ======= ======= ======= =======");
+                println!("=== ===== === =======");
                 println!();
                 println!("{fees}");
                 println!();

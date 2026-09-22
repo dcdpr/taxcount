@@ -1,16 +1,16 @@
-use super::ToNonSplittable as _;
 use super::lookup::{BasisLookup, BasisLookupExt};
+use super::ToNonSplittable as _;
 use super::{Asset, AssetName, BasisLifecycle, PoolAsset, PoolAssetSplit};
 use crate::errors::ExchangeRateError;
 use crate::imports::wallet::{LoanRole, Tx, TxType};
 use crate::model::blockchain::{BlockchainExt, TimeOrderedBlockchain};
 use crate::model::checkpoint::{Pending, PendingAccountTx, PendingTxInfo, PendingUtxo, State};
 use crate::model::events::{Event, GainConfig, WalletDirection};
-use crate::model::kraken_amount::{BitcoinAmount, EthWAmount, EtherAmount, FiatAmount};
-use crate::model::kraken_amount::{KrakenAmount, UsdAmount, UsdcAmount, UsdtAmount};
+use crate::model::kraken_amount::{BitcoinAmount, EthWAmount, EtherAmount, UsdcAmount, UsdtAmount};
+use crate::model::kraken_amount::{FiatAmount, KrakenAmount, UsdAmount};
 use crate::model::ledgers::parsed::{LedgerMarginClose, LedgerParsed, LedgerTwoRowTrade};
 use crate::model::ledgers::rows::{BasisRow, LedgerRowDeposit, TradeRow};
-use crate::model::pairs::{Trade, get_asset_pair};
+use crate::model::pairs::{get_asset_pair, Trade};
 use crate::util::fifo::FIFO;
 use chrono::{DateTime, Utc};
 use error_iter::ErrorIter as _;
@@ -903,7 +903,7 @@ impl State {
 
             // Handle inputs and outputs separately.
             //
-            // A fiat-denominated buy capitalizes the fee into the acquired lot's basis (see
+            // A fiat-denominated buy capitalizes the fee into the acquired split's basis (see
             // `BasisLifecycle::get_exchange_rate_at_acquisition`), so the fee is not released
             // as a fee atom.
             let row_out_fee =
@@ -916,16 +916,10 @@ impl State {
             // The event's defined rate covers the outgoing (row_out) asset, which is also the
             // asset the row_out fee is denominated in. It does not cover a row_in fee, which
             // falls back to the market rate.
-            let row_out_fee_rate = event.event_info.asset_out_exchange_rate;
-            let mut errors = self.release_poolasset(
-                &mut event,
-                args,
-                row_out.amount,
-                row_out_fee,
-                row_out_fee_rate,
-            );
+            let asset_fee = (row_out_fee, event.event_info.asset_out_exchange_rate);
+            let mut errors = self.release_poolasset(&mut event, args, row_out.amount, asset_fee);
             let input_errors =
-                self.release_poolasset(&mut event, args, row_in.amount, -row_in.fee, None);
+                self.release_poolasset(&mut event, args, row_in.amount, (-row_in.fee, None));
 
             errors.extend(input_errors);
 
@@ -960,7 +954,7 @@ impl State {
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errors = self.release_poolasset(&mut event, args, lrt.amount, -lrt.fee, None);
+            let errors = self.release_poolasset(&mut event, args, lrt.amount, (-lrt.fee, None));
 
             if errors.is_empty() {
                 vec![Ok(event)]
@@ -992,7 +986,7 @@ impl State {
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errors = self.release_poolasset(&mut event, args, lrt.amount, -lrt.fee, None);
+            let errors = self.release_poolasset(&mut event, args, lrt.amount, (-lrt.fee, None));
 
             if errors.is_empty() {
                 vec![Ok(event)]
@@ -1026,7 +1020,7 @@ impl State {
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errors = self.release_poolasset(&mut event, args, lrt.amount, -lrt.fee, None);
+            let errors = self.release_poolasset(&mut event, args, lrt.amount, (-lrt.fee, None));
 
             if errors.is_empty() {
                 vec![Ok(event)]
@@ -1095,16 +1089,12 @@ impl State {
             }
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errs = self.release_poolasset(
-                &mut event,
-                args,
-                row_proceeds.amount,
-                -row_proceeds.fee,
-                None,
-            );
+            let asset_fee = (-row_proceeds.fee, None);
+            let errs = self.release_poolasset(&mut event, args, row_proceeds.amount, asset_fee);
             errors.extend(errs);
 
-            let errs = self.release_poolasset(&mut event, args, row_fee.amount, -row_fee.fee, None);
+            let asset_fee = (-row_fee.fee, None);
+            let errs = self.release_poolasset(&mut event, args, row_fee.amount, asset_fee);
             errors.extend(errs);
 
             if errors.is_empty() {
@@ -1256,141 +1246,70 @@ impl State {
     }
 
     /// Release a PoolAsset, e.g. a Sell or Fee.
+    ///
+    /// `asset_fee` is the fee paid in any asset and its USD rate (if any).
     fn release_poolasset(
         &mut self,
         event: &mut Event,
         args: &mut Args,
         asset_amount: KrakenAmount,
-        asset_fee: KrakenAmount,
-        fee_rate: Option<UsdAmount>,
+        asset_fee: (KrakenAmount, Option<UsdAmount>),
     ) -> Vec<PriceError> {
         debug!("release_poolasset() event: {event:?}");
         if asset_amount.is_negative() {
             debug!("release_poolasset() asset_amount: {asset_amount:?}");
         }
-        if asset_fee.is_negative() {
-            debug!("release_poolasset() asset_fee: {asset_fee:?}");
+        if asset_fee.0.is_negative() {
+            debug!("release_poolasset() asset_fee: {:?}", asset_fee.0);
         }
 
         let gain_config = &args.gain_config;
 
-        match (asset_amount, asset_fee) {
+        match (asset_amount, asset_fee.0) {
             (KrakenAmount::Usd(_), KrakenAmount::Usd(_)) => {
                 let fifo = &mut self.exchange_balances.usd;
                 let utxos = &mut args.pending_withdrawals.usd;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Btc(_), KrakenAmount::Btc(_)) => {
                 let fifo = &mut self.exchange_balances.btc;
                 let utxos = &mut args.pending_withdrawals.btc;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Chf(_), KrakenAmount::Chf(_)) => {
                 let fifo = &mut self.exchange_balances.chf;
                 let utxos = &mut args.pending_withdrawals.chf;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Eth(_), KrakenAmount::Eth(_)) => {
                 let fifo = &mut self.exchange_balances.eth;
                 let utxos = &mut args.pending_withdrawals.eth;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::EthW(_), KrakenAmount::EthW(_)) => {
                 let fifo = &mut self.exchange_balances.ethw;
                 let utxos = &mut args.pending_withdrawals.ethw;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Eur(_), KrakenAmount::Eur(_)) => {
                 let fifo = &mut self.exchange_balances.eur;
                 let utxos = &mut args.pending_withdrawals.eur;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Jpy(_), KrakenAmount::Jpy(_)) => {
                 let fifo = &mut self.exchange_balances.jpy;
                 let utxos = &mut args.pending_withdrawals.jpy;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Usdc(_), KrakenAmount::Usdc(_)) => {
                 let fifo = &mut self.exchange_balances.usdc;
                 let utxos = &mut args.pending_withdrawals.usdc;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             (KrakenAmount::Usdt(_), KrakenAmount::Usdt(_)) => {
                 let fifo = &mut self.exchange_balances.usdt;
                 let utxos = &mut args.pending_withdrawals.usdt;
-                release_poolasset_inner(
-                    event,
-                    fifo,
-                    utxos,
-                    asset_amount,
-                    asset_fee,
-                    fee_rate,
-                    gain_config,
-                )
+                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
             }
             _ => todo!("Unsupported asset in release_poolasset()"),
         }
@@ -1806,8 +1725,7 @@ fn release_poolasset_inner<A, B, T>(
     fifo: &mut FIFO<PoolAsset<A>>,
     pending_withdrawals: &mut T,
     asset_amount: KrakenAmount,
-    asset_fee: KrakenAmount,
-    fee_rate: Option<UsdAmount>,
+    asset_fee: (KrakenAmount, Option<UsdAmount>),
     gain_config: &GainConfig,
 ) -> Vec<PriceError>
 where
@@ -1820,8 +1738,7 @@ where
 {
     let mut errors = vec![];
 
-    // Atoms added before this call must not be modified by the pro-rata proceeds reduction
-    // below.
+    // Atoms added before this call must not be modified by the pro-rata proceeds reduction below.
     let trade_atom_start = event.event_details.len();
 
     if asset_amount.is_negative() {
@@ -1863,8 +1780,8 @@ where
             Err(error) => errors.push(error),
         }
     }
-    if asset_fee.is_negative() {
-        match consume_poolasset(fifo, asset_fee) {
+    if asset_fee.0.is_negative() {
+        match consume_poolasset(fifo, asset_fee.0) {
             Ok(split_assets) => {
                 let split_assets = split_assets
                     .into_iter()
@@ -1874,11 +1791,12 @@ where
                 // `fee_rate` covers the fee asset when the event has a defined rate for it.
                 // Otherwise `add_fee` falls back to the fee asset's market rate at the event
                 // date-time.
+                let fee_rate = asset_fee.1;
                 let (fee_errors, fee_value) = event.add_fee(split_assets, fee_rate, gain_config);
                 errors.extend(fee_errors.into_iter().map(|error| error.into()));
 
-                // Trade fees offset the trade atoms' proceeds added by this same call: the
-                // trade atoms' and fee atoms' proceeds must sum to the event's total proceeds.
+                // Trade fees offset the trade atoms' proceeds added by this same call: the trade
+                // atoms' and fee atoms' proceeds must sum to the event's total proceeds.
                 event.reduce_trade_proceeds(trade_atom_start, fee_value);
             }
             Err(error) => errors.push(error),
@@ -1929,20 +1847,20 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::imports::kraken::{read_ledgers, read_trades};
     use crate::imports::wallet::{Txi, Txo, TxoInfo};
     use crate::model::checkpoint::{Balances, CheckpointHeader, UtxoBalances};
+    use crate::model::events::{EventAtom, EventSubType, GainPortion, GainTerm};
     use crate::model::exchange_rate::{ExchangeRateMap, ExchangeRates};
-    use crate::model::ledgers::rows::LedgerRowTypical;
-    use crate::model::{
-        CapGainsWorksheet,
-        blockchain::Utxo,
-        events::{EventAtom, GainTerm},
-        kraken_amount::FiatAmount,
-    };
+    use crate::model::ledgers::rows::{BasisRow, LedgerRowTypical};
+    use crate::model::{blockchain::Utxo, CapGainsWorksheet, Stats, Sums};
     use chrono::NaiveDateTime;
     use gitver::GitverHashes;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeSet, HashMap};
+    use std::rc::Rc;
     use tracing_test::traced_test;
+
+    // use crate::model::{KrakenAmount, Stats, Sums, UsdAmount};
 
     // Exchange rates are very important for properly reporting taxable events that involve various
     // assets. There are two kinds of taxable events in the US: income and capital gains.
@@ -1950,7 +1868,7 @@ mod tests {
     //
     // Taxable events for capital gains only occur on outgoing assets. A fee is a separate taxable
     // event on the fee coin itself: the fee is booked at its definitional or market value when
-    // paid, against the cost basis of the lot that paid it. Some examples of when a capital gain
+    // paid, against the cost basis of the splits that paid it. Some examples of when a capital gain
     // occurs:
     //
     // - Selling an asset for USD.
@@ -2097,18 +2015,18 @@ mod tests {
             event.event_info.proceeds,
             UsdAmount::from("3488.56".parse::<FiatAmount>().unwrap()),
         );
+
         // The event has two atoms: the trade atom (0.1 BTC) and the fee atom (0.0002 BTC).
         // The trade atom's proceeds are reduced by the fee value, and the fee atom is booked at
         // the event's definitional rate.
         assert_eq!(event.event_details.len(), 2);
-
         match &event.event_details[0] {
             EventAtom::Trade {
                 asset_amount,
                 proceeds,
                 net_gain,
             } => {
-                assert_eq!(asset_amount.to_decimal(), "-0.10000000".parse().unwrap(),);
+                assert_eq!(asset_amount.to_decimal(), "-0.10000000".parse().unwrap());
                 // 3488.56 - (0.0002 * 34885.60)
                 assert_eq!(
                     *proceeds,
@@ -2136,7 +2054,7 @@ mod tests {
                 proceeds,
                 net_gain,
             } => {
-                assert_eq!(asset_amount.to_decimal(), "-0.00020000".parse().unwrap(),);
+                assert_eq!(asset_amount.to_decimal(), "-0.00020000".parse().unwrap());
                 // 0.0002 * 34885.60
                 assert_eq!(
                     *proceeds,
@@ -2161,8 +2079,8 @@ mod tests {
         }
     }
 
-    /// Setup like [`setup`], but the exchange BTC pool has two lots with different basis.
-    fn setup_two_lots() -> (State, ExchangeRates) {
+    /// Setup like [`setup`], but the exchange BTC pool has two splits. with different basis.
+    fn setup_two_splits() -> (State, ExchangeRates) {
         let state = State {
             header: CheckpointHeader {
                 time: "now".to_string(),
@@ -2174,14 +2092,14 @@ mod tests {
             exchange_balances: Balances {
                 btc: FIFO::from_iter([
                     PoolAsset::from_basis_row(&BasisRow {
-                        synthetic_id: "lot-1:0".to_string(),
+                        synthetic_id: "split-1:0".to_string(),
                         time: get_datetime("2019-09-08 19:38:42"),
                         asset: "XXBT".to_string(),
                         amount: Some(KrakenAmount::new("XXBT", "0.06000000").unwrap()),
                         exchange_rate: "100.00".parse().unwrap(),
                     }),
                     PoolAsset::from_basis_row(&BasisRow {
-                        synthetic_id: "lot-2:0".to_string(),
+                        synthetic_id: "split-2:0".to_string(),
                         time: get_datetime("2024-03-01 12:00:00"),
                         asset: "XXBT".to_string(),
                         amount: Some(KrakenAmount::new("XXBT", "0.10000000").unwrap()),
@@ -2208,16 +2126,15 @@ mod tests {
         (state, exchange_rates_db)
     }
 
-    /// Selling 0.15 BTC spanning two lots (0.06 @ $100, 0.09 @ $200) for 15,000 ZUSD with a
-    /// 0.003 BTC fee. The fee value (300 USD) must be split pro-rata across the two trade
-    /// atoms (120 and 180), so the trade atoms' and fee atom's proceeds sum to the event's
-    /// total proceeds.
+    /// Selling 0.15 BTC spanning two splits (0.06 @ $100, 0.09 @ $200) for 15,000 ZUSD with a 0.003
+    /// BTC fee. The fee value (300 USD) must be split pro-rata across the two trade atoms (120 and
+    /// 180), so the trade atoms' and fee atom's proceeds sum to the event's total proceeds.
     #[test]
     #[traced_test]
-    fn test_multi_lot_sale_fee_pro_rata_reduction() {
+    fn test_multi_split_sale_fee_pro_rata_reduction() {
         let _ = tracing_log::LogTracer::init();
 
-        let (mut state, exchange_rates_db) = setup_two_lots();
+        let (mut state, exchange_rates_db) = setup_two_splits();
         let mut args = Args {
             gain_config: GainConfig {
                 exchange_rates_db,
@@ -2260,7 +2177,7 @@ mod tests {
             event.event_info.proceeds,
             UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
         );
-        // Two trade atoms (one per lot) and one fee atom.
+        // Two trade atoms (one per split) and one fee atom.
         assert_eq!(event.event_details.len(), 3);
 
         match &event.event_details[0] {
@@ -2346,7 +2263,7 @@ mod tests {
                 );
                 match net_gain {
                     GainTerm::LongUs(us) => {
-                        // The fee is consumed from lot 2 after the trade: 0.003 * 200
+                        // The fee is consumed from split 2 after the trade: 0.003 * 200
                         assert_eq!(
                             us.basis,
                             UsdAmount::from("0.60".parse::<FiatAmount>().unwrap()),
@@ -2388,11 +2305,11 @@ mod tests {
         );
         assert_eq!(sums.gains_us_short(), UsdAmount::default(),);
 
-        // 0.10 - 0.09 - 0.003 = 0.007 of lot 2 remains.
-        let lots: Vec<_> = state.exchange_balances.btc.iter().collect();
-        assert_eq!(lots.len(), 1);
+        // 0.10 - 0.09 - 0.003 = 0.007 of split 2 remains.
+        let splits: Vec<_> = state.exchange_balances.btc.iter().collect();
+        assert_eq!(splits.len(), 1);
         assert_eq!(
-            KrakenAmount::from(lots[0].amount),
+            KrakenAmount::from(splits[0].amount),
             KrakenAmount::new("XXBT", "0.00700000").unwrap(),
         );
     }
@@ -2538,34 +2455,18 @@ mod tests {
             )])
         );
     }
-}
 
-#[cfg(test)]
-mod fee_cases {
-    //! Fixture-driven tests from `fixtures/fee-cases/`.
-    //!
-    //! Each fixture is a Kraken-format scenario (ledgers + trades) exercising fee handling:
-    //! - `lt-sale-st-fee`: FIFO sells the LT lot; the fee coin comes from the ST lot.
-    //! - `st-sale-lt-fee`: FIFO sells the ST lot; the fee coin comes from the LT lot.
-    //! - `margin-rollover`: `st-sale-lt-fee` plus a margin position whose open and rollover
-    //!   fees are paid in BTC from the remaining LT lot.
+    // Fixture-driven tests from `fixtures/fee-cases/`.
+    //
+    // Each fixture is a Kraken-format scenario (ledgers + trades) exercising fee handling:
+    // - `lt-sale-st-fee`: FIFO sells the LT lot; the fee coin comes from the ST lot.
+    // - `st-sale-lt-fee`: FIFO sells the ST lot; the fee coin comes from the LT lot.
+    // - `margin-rollover`: `st-sale-lt-fee` plus a margin position whose open and rollover fees are
+    //   paid in BTC from the remaining LT lot.
 
-    use super::*;
-    use crate::imports::kraken::{read_ledgers, read_trades};
-    use crate::model::events::{EventAtom, EventSubType, GainPortion, GainTerm};
-    use crate::model::exchange_rate::{ExchangeRateMap, ExchangeRates};
-    use crate::model::ledgers::rows::BasisRow;
-    use crate::model::{CapGainsWorksheet, FiatAmount, KrakenAmount, Stats, Sums, UsdAmount};
-    use chrono::NaiveDateTime;
-    use std::collections::HashMap;
-    use std::rc::Rc;
-
-    fn get_datetime(datetime: &str) -> DateTime<Utc> {
-        NaiveDateTime::parse_from_str(datetime, "%F %T")
-            .unwrap()
-            .and_utc()
-    }
-
+    /// Construct a UsdAmount from a string.
+    ///
+    /// The string should have a precision of 4 decimal places, like "0.0000".
     fn usd(s: &str) -> UsdAmount {
         UsdAmount::from(s.parse::<FiatAmount>().unwrap())
     }
@@ -2575,9 +2476,9 @@ mod fee_cases {
         let ts = |day: &str| get_datetime(&format!("{day} 00:00:00")).timestamp() as u64;
         ExchangeRates::from_raw(
             60 * 60 * 24 - 1, // granularity
-            btc_days.iter().map(|d| (ts(d), usd("1000"))).collect(),
+            btc_days.iter().map(|d| (ts(d), usd("1000.0000"))).collect(),
             ExchangeRateMap::default(), // CHF
-            eth_days.iter().map(|d| (ts(d), usd("50"))).collect(),
+            eth_days.iter().map(|d| (ts(d), usd("50.0000"))).collect(),
             ExchangeRateMap::default(), // ETHW
             ExchangeRateMap::default(), // EUR
             ExchangeRateMap::default(), // JPY
@@ -2688,7 +2589,7 @@ mod fee_cases {
             } => {
                 assert_eq!(asset_amount.to_decimal(), "-1.00000000".parse().unwrap());
                 // 1.00 BTC * $1,000, reduced by the fee value (0.008 BTC * $1,000).
-                assert_eq!(*proceeds, usd("992"));
+                assert_eq!(*proceeds, usd("992.0000"));
                 let us = if trade.3 {
                     long_us(net_gain)
                 } else {
@@ -2710,7 +2611,7 @@ mod fee_cases {
                 net_gain,
             } => {
                 assert_eq!(asset_amount.to_decimal(), "-0.00800000".parse().unwrap());
-                assert_eq!(*proceeds, usd("8.00"));
+                assert_eq!(*proceeds, usd("8.0000"));
                 let us = if fee.3 {
                     long_us(net_gain)
                 } else {
@@ -2726,21 +2627,24 @@ mod fee_cases {
         sale
     }
 
-    /// Assert a single-lot exchange balance: amount and acquisition rate.
+    /// Assert a single-split exchange balance: amount and acquisition rate.
     fn assert_pool(
         pool: &FIFO<PoolAsset<BitcoinAmount>>,
         db: &ExchangeRates,
         amount: &str,
         rate: &str,
     ) {
-        let lots: Vec<_> = pool.iter().collect();
-        assert_eq!(lots.len(), 1);
-        let lot = &lots[0];
+        let splits: Vec<_> = pool.iter().collect();
+        assert_eq!(splits.len(), 1);
+        let split = &splits[0];
         assert_eq!(
-            KrakenAmount::from(lot.amount),
-            KrakenAmount::new("XXBT", amount).unwrap()
+            KrakenAmount::from(split.amount),
+            KrakenAmount::new("XXBT", amount).unwrap(),
         );
-        let actual_rate = lot.lifecycle.get_exchange_rate_at_acquisition(db).unwrap();
+        let actual_rate = split
+            .lifecycle
+            .get_exchange_rate_at_acquisition(db)
+            .unwrap();
         assert_eq!(actual_rate, usd(rate));
     }
 
@@ -2752,34 +2656,35 @@ mod fee_cases {
             vec![],
         );
 
-        // The 2020 lot's fiat fee is capitalized: basis $10.08/BTC (LT).
-        // The 2026 lot's fiat fee is capitalized: basis $1,008/BTC (ST).
-        // The sale disposes 1.008 BTC: 1.00 from the 2020 lot (trade atom),
-        // 0.008 from the 2026 lot (fee atom).
+        // The 2020 split's fiat fee is capitalized: basis $10.08/BTC (LT).
+        // The 2026 split's fiat fee is capitalized: basis $1,008/BTC (ST).
+        // The sale disposes 1.008 BTC:
+        // - 1.000 from the 2020 split (trade atom)
+        // - 0.008 from the 2026 split (fee atom)
         assert_sale(
             &events,
-            ("2020-05-15 11:00:00", "10.08", "981.92", true),
-            ("2026-01-10 10:00:00", "8.064", "-0.064", false),
+            ("2020-05-15 11:00:00", "10.0800", "981.9200", true),
+            ("2026-01-10 10:00:00", "8.0640", "-0.0640", false),
         );
 
         let db = rates(&["2026-07-20"], &["2026-07-20"]);
         let sums = sums(events);
-        assert_eq!(sums.gains_us_long(), usd("981.92"));
-        assert_eq!(sums.gains_us_short(), usd("-0.064"));
+        assert_eq!(sums.gains_us_long(), usd("981.9200"));
+        assert_eq!(sums.gains_us_short(), usd("-0.0640"));
 
-        // Remaining BTC lot: 0.992 at $1,008. ETH basis: 20 ETH at $50.
-        assert_pool(&state.exchange_balances.btc, &db, "0.99200000", "1008");
+        // Remaining BTC split: 0.992 at $1,008. ETH basis: 20 ETH at $50.
+        assert_pool(&state.exchange_balances.btc, &db, "0.99200000", "1008.0000");
         let eth: Vec<_> = state.exchange_balances.eth.iter().collect();
         assert_eq!(eth.len(), 1);
         assert_eq!(
             KrakenAmount::from(eth[0].amount),
-            KrakenAmount::new("XETH", "20.0000000000").unwrap()
+            KrakenAmount::new("XETH", "20.0000000000").unwrap(),
         );
         let rate = eth[0]
             .lifecycle
             .get_exchange_rate_at_acquisition(&db)
             .unwrap();
-        assert_eq!(rate, usd("50"));
+        assert_eq!(rate, usd("50.0000"));
     }
 
     #[test]
@@ -2790,28 +2695,28 @@ mod fee_cases {
             vec![basis_row("ca5e02-1ed9e-000004")],
         );
 
-        // FIFO: the 2026-01-10 exchange lot ($1,008, ST) entered first and is sold;
-        // the 2020-05-15 off-exchange lot ($10, LT) pays the fee.
+        // FIFO: the 2026-01-10 exchange split ($1,008, ST) entered first and is sold;
+        // the 2020-05-15 off-exchange split ($10, LT) pays the fee.
         assert_sale(
             &events,
-            ("2026-01-10 10:00:00", "1008", "-16", false),
-            ("2020-05-15 12:00:00", "0.08", "7.92", true),
+            ("2026-01-10 10:00:00", "1008.0000", "-16.0000", false),
+            ("2020-05-15 12:00:00", "0.0800", "7.9200", true),
         );
 
         let db = rates(&["2026-07-20"], &["2026-07-20"]);
         let sums = sums(events);
-        assert_eq!(sums.gains_us_long(), usd("7.92"));
-        assert_eq!(sums.gains_us_short(), usd("-16"));
+        assert_eq!(sums.gains_us_long(), usd("7.9200"));
+        assert_eq!(sums.gains_us_short(), usd("-16.0000"));
 
-        // The remaining BTC is the tail of the LT lot (the ST lot was fully sold).
-        assert_pool(&state.exchange_balances.btc, &db, "0.99200000", "10");
+        // The remaining BTC is the tail of the LT split (the ST split was fully sold).
+        assert_pool(&state.exchange_balances.btc, &db, "0.99200000", "10.0000");
         let eth: Vec<_> = state.exchange_balances.eth.iter().collect();
         assert_eq!(eth.len(), 1);
         let rate = eth[0]
             .lifecycle
             .get_exchange_rate_at_acquisition(&db)
             .unwrap();
-        assert_eq!(rate, usd("50"));
+        assert_eq!(rate, usd("50.0000"));
     }
 
     #[test]
@@ -2825,11 +2730,11 @@ mod fee_cases {
         // Sale: same as st-sale-lt-fee.
         assert_sale(
             &events,
-            ("2026-01-10 10:00:00", "1008", "-16", false),
-            ("2020-05-15 12:00:00", "0.08", "7.92", true),
+            ("2026-01-10 10:00:00", "1008.0000", "-16.0000", false),
+            ("2020-05-15 12:00:00", "0.0800", "7.9200", true),
         );
 
-        // Margin open fee: 0.02 BTC from the LT lot. A nondeductible carrying cost:
+        // Margin open fee: 0.02 BTC from the LT split. A nondeductible carrying cost:
         // a `Fee` atom (not `InvestmentFee`), proceeds go nowhere.
         let margin_open = find_event(&events, "2026-07-25 08:00:00", |s| {
             matches!(s, EventSubType::MarginOpen)
@@ -2843,15 +2748,15 @@ mod fee_cases {
                 net_gain,
             } => {
                 assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
-                assert_eq!(*proceeds, usd("20"));
+                assert_eq!(*proceeds, usd("20.0000"));
                 let us = long_us(net_gain);
-                assert_eq!(us.basis, usd("0.20"));
-                assert_eq!(us.net_gain, usd("19.80"));
+                assert_eq!(us.basis, usd("0.2000"));
+                assert_eq!(us.net_gain, usd("19.8000"));
             }
             other => panic!("expected fee atom, got {other:?}"),
         }
 
-        // Five rollover fees: 0.02 BTC each from the LT lot. Investment interest expense.
+        // Five rollover fees: 0.02 BTC each from the LT split. Investment interest expense.
         let rollover_dates = [
             "2026-07-25 12:00:00",
             "2026-07-25 16:00:00",
@@ -2870,10 +2775,10 @@ mod fee_cases {
                     net_gain,
                 } => {
                     assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
-                    assert_eq!(*proceeds, usd("20"));
+                    assert_eq!(*proceeds, usd("20.0000"));
                     let us = long_us(net_gain);
-                    assert_eq!(us.basis, usd("0.20"));
-                    assert_eq!(us.net_gain, usd("19.80"));
+                    assert_eq!(us.basis, usd("0.2000"));
+                    assert_eq!(us.net_gain, usd("19.8000"));
                 }
                 other => panic!("expected investment fee atom, got {other:?}"),
             }
@@ -2882,17 +2787,17 @@ mod fee_cases {
         let db = rates(&["2026-07-20", "2026-07-25", "2026-07-26"], &["2026-07-20"]);
         let sums = sums(events);
         // LT trade gain: 7.92 (sale fee) + 19.80 (open fee) + 5 * 19.80 (rollover fees).
-        assert_eq!(sums.us_long_trade_gain(), usd("126.72"));
+        assert_eq!(sums.us_long_trade_gain(), usd("126.7200"));
         // The rollover fee values ($100) are capped investment interest expense.
-        assert_eq!(sums.us_long_position_fees(), usd("100"));
+        assert_eq!(sums.us_long_position_fees(), usd("100.0000"));
         // 126.72 - 100 = 26.72, no carryover. ST is the sale's -$16 loss.
-        assert_eq!(sums.gains_us_long(), usd("26.72"));
-        assert_eq!(sums.gains_us_short(), usd("-16"));
+        assert_eq!(sums.gains_us_long(), usd("26.7200"));
+        assert_eq!(sums.gains_us_short(), usd("-16.0000"));
         // Total proceeds: 1.00 BTC at the defined rate of $1,000.
-        assert_eq!(sums.ledger_proceeds(), usd("1000"));
+        assert_eq!(sums.ledger_proceeds(), usd("1000.0000"));
 
-        // Remaining BTC lot: 0.872 at $10.
-        assert_pool(&state.exchange_balances.btc, &db, "0.87200000", "10");
+        // Remaining BTC split: 0.872 at $10.
+        assert_pool(&state.exchange_balances.btc, &db, "0.87200000", "10.0000");
 
         // ETH basis: 20 ETH at the defined rate of $50, i.e. $1,000.
         let eth: Vec<_> = state.exchange_balances.eth.iter().collect();
@@ -2901,6 +2806,6 @@ mod fee_cases {
             .lifecycle
             .get_exchange_rate_at_acquisition(&db)
             .unwrap();
-        assert_eq!(rate, usd("50"));
+        assert_eq!(rate, usd("50.0000"));
     }
 }
