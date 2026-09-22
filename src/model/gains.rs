@@ -271,29 +271,6 @@ impl Display for EventAtom {
     }
 }
 
-impl EventAtom {
-    /// The name of this atom for the detail CSVs.
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Trade { .. } => "Trade",
-            Self::Income { .. } => "Income",
-            Self::Position { .. } => "Position",
-            Self::Fee { .. } => "Fee",
-            Self::InvestmentFee { .. } => "Investment Fee",
-        }
-    }
-
-    fn asset_amount(&self) -> &KrakenAmount {
-        match self {
-            Self::Trade { asset_amount, .. }
-            | Self::Income { asset_amount, .. }
-            | Self::Position { asset_amount, .. }
-            | Self::Fee { asset_amount, .. }
-            | Self::InvestmentFee { asset_amount, .. } => asset_amount,
-        }
-    }
-}
-
 /// This trait is used to reduce code duplication when interacting with `Option<T>` where `T`
 /// contains a `UsdAmount`.
 trait ToCsvString {
