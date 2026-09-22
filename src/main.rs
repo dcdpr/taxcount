@@ -395,13 +395,9 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
 
     // Get the first available year in any of the input data.
     let year = wallets
-        .iter()
-        .flat_map(|(_, txs)| txs.get_first_year())
-        .chain(
-            ledgers
-                .iter()
-                .flat_map(|(_, ledger)| ledger.get_first_year()),
-        )
+        .values()
+        .flat_map(|txs| txs.get_first_year())
+        .chain(ledgers.values().flat_map(|ledger| ledger.get_first_year()))
         .next()
         .or_else(|| trades.get_first_year())
         .or_else(|| basis_lookup.get_first_year());
@@ -525,10 +521,10 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
             println!();
         }
 
-        if let Some(details) = worksheet.trade_details() {
+        if let Some(details) = worksheet.event_details() {
             if let Some(path) = args.worksheet_path.as_ref().map(|root| {
                 let filename = format!(
-                    "{}{worksheet_name}-trade-details.csv",
+                    "{}{worksheet_name}-event-details.csv",
                     args.worksheet_prefix
                 );
                 root.join(filename)
@@ -537,108 +533,33 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
 
                 let path = path.display();
                 let underline = "=".repeat(path.to_string().len());
-                println!("Cap Gains Trade Details written to {path}");
+                println!("Cap Gains Event Details written to {path}");
                 println!("=== ===== ===== ======= ======= == {underline}");
                 println!();
             } else if args.verbose {
-                println!("Cap Gains Trade Details");
-                println!("=== ===== ===== =======");
+                println!("Cap Gains Event Details");
+                println!("=== ===== ===== ======= ======= ======= =======");
                 println!();
                 println!("{details}");
                 println!();
             }
         }
 
-        if let Some(details) = worksheet.income_details() {
+        if let Some(fees) = worksheet.fee_details() {
             if let Some(path) = args.worksheet_path.as_ref().map(|root| {
-                let filename = format!(
-                    "{}{worksheet_name}-income-details.csv",
-                    args.worksheet_prefix
-                );
-                root.join(filename)
-            }) {
-                std::fs::write(&path, details.to_string())?;
-
-                let path = path.display();
-                let underline = "=".repeat(path.to_string().len());
-                println!("Cap Gains Income Details written to {path}");
-                println!("=== ===== ====== ======= ======= == {underline}");
-                println!();
-            } else if args.verbose {
-                println!("Cap Gains Income Details");
-                println!("=== ===== ====== =======");
-                println!();
-                println!("{details}");
-                println!();
-            }
-        }
-
-        if let Some(fees) = worksheet.tx_fees() {
-            if let Some(path) = args.worksheet_path.as_ref().map(|root| {
-                let filename = format!(
-                    "{}{worksheet_name}-tx-fee-details.csv",
-                    args.worksheet_prefix
-                );
+                let filename = format!("{}{worksheet_name}-fee-details.csv", args.worksheet_prefix);
                 root.join(filename)
             }) {
                 std::fs::write(&path, fees.to_string())?;
 
                 let path = path.display();
                 let underline = "=".repeat(path.to_string().len());
-                println!("Cap Gains Transaction Fee Details written to {path}");
-                println!("=== ===== =========== === ======= ======= == {underline}");
+                println!("Cap Gains Fee Details written to {path}");
+                println!("=== ===== ======= ======= == {underline}");
                 println!();
             } else if args.verbose {
-                println!("Cap Gains Transaction Fee Details");
-                println!("=== ===== =========== === =======");
-                println!();
-                println!("{fees}");
-                println!();
-            }
-        }
-
-        if let Some(details) = worksheet.position_details() {
-            if let Some(path) = args.worksheet_path.as_ref().map(|root| {
-                let filename = format!(
-                    "{}{worksheet_name}-margin-position-details.csv",
-                    args.worksheet_prefix
-                );
-                root.join(filename)
-            }) {
-                std::fs::write(&path, details.to_string())?;
-
-                let path = path.display();
-                let underline = "=".repeat(path.to_string().len());
-                println!("Cap Gains Position Details written to {path}");
-                println!("=== ===== ======== ======= ======= == {underline}");
-                println!();
-            } else if args.verbose {
-                println!("Cap Gains Position Details");
-                println!("=== ===== ======== =======");
-                println!();
-                println!("{details}");
-                println!();
-            }
-        }
-
-        if let Some(fees) = worksheet.position_fees() {
-            if let Some(path) = args.worksheet_path.as_ref().map(|root| {
-                let filename = format!(
-                    "{}{worksheet_name}-investment-interest-fee-details.csv",
-                    args.worksheet_prefix
-                );
-                root.join(filename)
-            }) {
-                std::fs::write(&path, fees.to_string())?;
-
-                let path = path.display();
-                let underline = "=".repeat(path.to_string().len());
-                println!("Cap Gains Investment Interest Fee Details written to {path}");
-                println!("=== ===== ========== ======== === ======= ======= == {underline}");
-                println!();
-            } else if args.verbose {
-                println!("Cap Gains Investment Interest Fee Details");
-                println!("=== ===== ========== ======== === =======");
+                println!("Cap Gains Fee Details");
+                println!("=== ===== ======= ======= ======= =======");
                 println!();
                 println!("{fees}");
                 println!();
