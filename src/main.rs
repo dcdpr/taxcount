@@ -395,13 +395,9 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
 
     // Get the first available year in any of the input data.
     let year = wallets
-        .iter()
-        .flat_map(|(_, txs)| txs.get_first_year())
-        .chain(
-            ledgers
-                .iter()
-                .flat_map(|(_, ledger)| ledger.get_first_year()),
-        )
+        .values()
+        .flat_map(|txs| txs.get_first_year())
+        .chain(ledgers.values().flat_map(|ledger| ledger.get_first_year()))
         .next()
         .or_else(|| trades.get_first_year())
         .or_else(|| basis_lookup.get_first_year());
