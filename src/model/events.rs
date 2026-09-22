@@ -19,32 +19,15 @@ pub struct Event {
     /// Each taxable event has one worksheet row, encapsulated in `EventInfo`.
     pub(crate) event_info: EventInfo,
 
-    // TODO: This is created as an incomplete type, and this boolean informs the code which of the
-    // inner "variants" needs to be filled out; either trade or margin position.
-    // Replace these booleans with a DSL "pipeline" for manipulating the PoolAsset FIFOs.
+    // TODO: This is created as an incomplete type, and this boolean informs the code that a
+    // pending withdrawal must be queued for the consumed assets. Replace this boolean with a
+    // DSL "pipeline" for manipulating the PoolAsset FIFOs.
     // See: https://gl1.dcdpr.com/rgrant/taxcount/-/issues/59
-    pub(crate) has_interest_fees: bool,
     pub(crate) is_withdrawal: bool,
 
-    // TODO: This looks like an enum. There should be no "crossing the streams". Trade+Position
-    // should not happen.
-    /// The event has zero or more details rows (may span multiple asset splits).
-    /// Trade event atoms have a cost basis.
-    pub(crate) trade_details: Vec<EventTradeAtom>,
-
-    /// The event has zero or more details rows (may span multiple asset splits).
-    /// Trade event atoms have a cost basis.
-    pub(crate) income_details: Vec<EventIncomeAtom>,
-
-    /// The event has zero or more details rows (may span multiple asset splits).
-    /// Position event atoms do not have a cost basis, because the asset is loaned.
-    pub(crate) position_details: Vec<EventPositionAtom>,
-
-    /// Zero or more transaction or trade fee rows (may span multiple asset splits).
-    pub(crate) tx_fees: Vec<EventFee>,
-
-    /// Zero or more investment interest expenses rows (may span multiple asset splits).
-    pub(crate) position_fees: Vec<EventFee>,
+    /// Zero or more detail atoms (may span multiple asset splits). Trade and fee atoms carry a
+    /// cost basis; position atoms do not, because the asset is loaned.
+    pub(crate) event_details: Vec<EventAtom>,
 }
 
 /// Extra info for taxable events.
@@ -61,23 +44,72 @@ pub(crate) struct EventInfo {
     pub(crate) proceeds: UsdAmount,         // Column I
 }
 
-/// Atomized details for taxable trade events.
+/// Atomized details for a taxable event.
+///
+/// Every taxable event detail is recorded as an atom in the single
+/// [`Event::event_details`] list: trade atoms for disposed assets, income atoms for received
+/// assets, position atoms for loaned assets (margin positions), fee atoms for fees paid from the
+/// pool, and investment fee atoms for margin position rollovers (investment interest expenses).
 #[derive(Clone, Debug)]
-pub(crate) struct EventTradeAtom {
-    // Column A is ledger_row_id
-    // Column B is asset_name
-    pub(crate) asset_amount: KrakenAmount, // Column C
-    pub(crate) proceeds: UsdAmount,        // Column D
-    pub(crate) net_gain: GainTerm,         // Columns E-...
+pub(crate) enum EventAtom {
+    /// The taxable asset (outgoing) is disposed of in a trade.
+    Trade {
+        asset_amount: KrakenAmount, // Column C
+        proceeds: UsdAmount,        // Column D
+        net_gain: GainTerm,         // Columns E-...
+    },
+
+    /// The taxable asset (incoming) is received as income.
+    Income {
+        asset_amount: KrakenAmount, // Column C
+        proceeds: UsdAmount,        // Column D
+    },
+
+    /// The asset is loaned (margin position). There is no cost basis, because the asset is
+    /// loaned.
+    Position {
+        asset_amount: KrakenAmount,            // Column C
+        proceeds_us: UsdAmount,                // Column D
+        proceeds_bona_fide: Option<UsdAmount>, // Column E
+    },
+
+    /// A fee paid from the pool. `proceeds` is the USD value of the fee at the moment of
+    /// payment; `net_gain` is the difference between that value and the fee coin's cost basis.
+    Fee {
+        asset_amount: KrakenAmount, // Column C
+        proceeds: UsdAmount,        // Column D
+        net_gain: GainTerm,         // Columns E-...
+    },
+
+    /// An investment interest expense (margin position rollover).
+    InvestmentFee {
+        asset_amount: KrakenAmount, // Column C
+        proceeds: UsdAmount,        // Column D
+        net_gain: GainTerm,         // Columns E-...
+    },
 }
 
-/// Atomized details for taxable income events.
-#[derive(Clone, Debug)]
-pub(crate) struct EventIncomeAtom {
-    // Column A is ledger_row_id
-    // Column B is asset_name
-    pub(crate) asset_amount: KrakenAmount, // Column C
-    pub(crate) proceeds: UsdAmount,        // Column D
+impl EventAtom {
+    /// The USD proceeds of this atom, if any.
+    pub(crate) fn proceeds(&self) -> Option<UsdAmount> {
+        match self {
+            Self::Trade { proceeds, .. }
+            | Self::Income { proceeds, .. }
+            | Self::Fee { proceeds, .. }
+            | Self::InvestmentFee { proceeds, .. } => Some(*proceeds),
+            Self::Position { .. } => None,
+        }
+    }
+
+    /// The net gain term of this atom, if any.
+    pub(crate) fn net_gain(&self) -> Option<&GainTerm> {
+        match self {
+            Self::Trade { net_gain, .. }
+            | Self::Fee { net_gain, .. }
+            | Self::InvestmentFee { net_gain, .. } => Some(net_gain),
+            _ => None,
+        }
+    }
 }
 
 /// Capital gains are classified as either short-term or long-term, based on whether the asset has
@@ -119,25 +151,6 @@ pub(crate) struct GainPortion {
     pub(crate) basis_date: DateTime<Utc>,
     pub(crate) basis_synthetic_id: String,
     pub(crate) net_gain: UsdAmount,
-}
-
-/// Atomized details for taxable position events.
-#[derive(Clone, Debug)]
-pub(crate) struct EventPositionAtom {
-    // Column A is ledger_row_id
-    // Column B is asset_name
-    pub(crate) asset_amount: KrakenAmount, // Column C
-    pub(crate) proceeds_us: UsdAmount,     // Column D
-    pub(crate) proceeds_bona_fide: Option<UsdAmount>, // Column E
-}
-
-/// Atomized details for fees.
-#[derive(Clone, Debug)]
-pub(crate) struct EventFee {
-    // Column A is ledger_row_id
-    // Column B is asset_name
-    pub(crate) asset_fee: KrakenAmount, // Column C
-    pub(crate) net_loss: GainTerm,      // Columns D-...
 }
 
 /// Global configuration required to calculate capital gains.
@@ -205,7 +218,6 @@ impl Event {
     ) -> Self {
         use LedgerParsed::*;
 
-        let has_interest_fees = matches!(&*lp, MarginPositionOpen(_) | MarginPositionRollover(_));
         let is_withdrawal = matches!(&*lp, Withdrawal(_));
         let event_subtype = EventSubType::from(&*lp);
         let event_name = lp.get_event_name();
@@ -218,13 +230,8 @@ impl Event {
                 event_subtype,
                 event_name,
             ),
-            has_interest_fees,
             is_withdrawal,
-            trade_details: vec![],
-            income_details: vec![],
-            position_details: vec![],
-            tx_fees: vec![],
-            position_fees: vec![],
+            event_details: vec![],
         }
     }
 
@@ -263,16 +270,12 @@ impl Event {
                 event_subtype,
                 event_name,
             ),
-            has_interest_fees: false,
             is_withdrawal: false,
-            trade_details: vec![],
-            income_details: vec![],
-            position_details: vec![],
-            tx_fees: vec![],
-            position_fees: vec![],
+            event_details: vec![],
         }
     }
 
+    /// Add a trade atom for each pool split consumed by this event.
     pub(crate) fn add_trade<A>(
         &mut self,
         split_assets: Vec<PoolAssetNonSplittable<A>>,
@@ -285,8 +288,8 @@ impl Event {
         let mut errors = vec![];
 
         for asset in split_assets {
-            match EventTradeAtom::from_split(asset, &self.event_info, gain_config) {
-                Ok(atom) => self.trade_details.push(atom),
+            match EventAtom::trade_from_split(asset, &self.event_info, gain_config) {
+                Ok(atom) => self.event_details.push(atom),
                 Err(err) => errors.push(err),
             }
         }
@@ -294,6 +297,7 @@ impl Event {
         errors
     }
 
+    /// Add an income atom for each pool split received by this event.
     pub(crate) fn add_income<'a, A, I>(&mut self, split_assets: I) -> Vec<ExchangeRateError>
     where
         A: Asset + Copy + 'a,
@@ -303,8 +307,8 @@ impl Event {
         let mut errors = vec![];
 
         for asset in split_assets {
-            match EventIncomeAtom::from_split(asset, &self.event_info) {
-                Ok(atom) => self.income_details.push(atom),
+            match EventAtom::income_from_split(asset, &self.event_info) {
+                Ok(atom) => self.event_details.push(atom),
                 Err(err) => errors.push(err),
             }
         }
@@ -312,55 +316,131 @@ impl Event {
         errors
     }
 
+    /// Add a position atom for a loaned asset (margin position).
     pub(crate) fn add_position(&mut self, asset_amount: KrakenAmount, gain_config: &GainConfig) {
-        self.position_details
-            .push(EventPositionAtom::from_kraken_amount(
+        self.event_details
+            .push(EventAtom::position_from_kraken_amount(
                 asset_amount,
                 &self.event_info,
                 gain_config,
             ));
     }
 
-    pub(crate) fn add_tx_fee<A>(
+    /// Add a fee atom for each pool split consumed as a fee by this event.
+    ///
+    /// Each fee atom's `proceeds` is the fee amount × `fee_rate`. When `fee_rate` is `None`
+    /// (the event has no defined rate covering the fee asset), the fee asset's market rate at
+    /// the event date-time is used. Returns the sum of all fee atoms' proceeds, along with any
+    /// exchange rate errors.
+    ///
+    /// The atom type is determined by the event subtype: margin position rollovers create
+    /// investment fee atoms (investment interest expenses); all other fees create fee atoms.
+    pub(crate) fn add_fee<A>(
         &mut self,
         split_assets: Vec<PoolAssetNonSplittable<A>>,
+        fee_rate: Option<UsdAmount>,
         gain_config: &GainConfig,
-    ) -> Vec<ExchangeRateError>
+    ) -> (Vec<ExchangeRateError>, UsdAmount)
     where
-        A: Asset,
+        A: Asset + Copy,
         KrakenAmount: From<A>,
     {
         let mut errors = vec![];
+        let mut fee_value = UsdAmount::default();
 
         for asset in split_assets {
-            match EventFee::from_split(asset, &self.event_info, gain_config) {
-                Ok(fee) => self.tx_fees.push(fee),
+            let rate = match fee_rate {
+                Some(rate) => rate,
+                None => {
+                    let amount = KrakenAmount::from(asset.amount);
+                    match amount.get_exchange_rate(
+                        self.event_info.event_date,
+                        &gain_config.exchange_rates_db,
+                    ) {
+                        Ok(rate) => rate,
+                        Err(err) => {
+                            errors.push(err);
+                            continue;
+                        }
+                    }
+                }
+            };
+
+            match EventAtom::from_fee_split(asset, &self.event_info, rate, gain_config) {
+                Ok(atom) => {
+                    fee_value += atom.proceeds().expect("Fee atom has proceeds");
+                    self.event_details.push(atom);
+                }
                 Err(err) => errors.push(err),
             }
         }
 
-        errors
+        (errors, fee_value)
     }
 
-    pub(crate) fn add_position_fee<A>(
-        &mut self,
-        split_assets: Vec<PoolAssetNonSplittable<A>>,
-        gain_config: &GainConfig,
-    ) -> Vec<ExchangeRateError>
-    where
-        A: Asset,
-        KrakenAmount: From<A>,
-    {
-        let mut errors = vec![];
-
-        for asset in split_assets {
-            match EventFee::from_split(asset, &self.event_info, gain_config) {
-                Ok(fee) => self.position_fees.push(fee),
-                Err(err) => errors.push(err),
-            }
+    /// Reduce the proceeds of trade atoms added after `start`, pro-rata to each atom's
+    /// pre-reduction proceeds, so that the sum of the reductions is exactly `fee_value`.
+    ///
+    /// Trade fees offset the trade atoms' proceeds: the trade atoms' and fee atoms' proceeds
+    /// must sum to the event's total proceeds.
+    pub(crate) fn reduce_trade_proceeds(&mut self, start: usize, fee_value: UsdAmount) {
+        if fee_value == UsdAmount::default() {
+            return;
         }
 
-        errors
+        let total: UsdAmount = self
+            .event_details
+            .iter()
+            .skip(start)
+            .filter(|atom| matches!(atom, EventAtom::Trade { .. }))
+            .map(|atom| atom.proceeds().expect("Trade atom has proceeds"))
+            .fold(UsdAmount::default(), |acc, proceeds| acc + proceeds);
+
+        if total == UsdAmount::default() {
+            return;
+        }
+
+        // Find the last trade atom so any rounding difference lands there and the reductions
+        // sum to exactly `fee_value`.
+        let last_trade = self
+            .event_details
+            .iter()
+            .enumerate()
+            .skip(start)
+            .rev()
+            .find_map(|(i, atom)| matches!(atom, EventAtom::Trade { .. }).then_some(i));
+
+        let mut applied = UsdAmount::default();
+        for (i, atom) in self.event_details.iter_mut().enumerate().skip(start) {
+            if let EventAtom::Trade {
+                proceeds, net_gain, ..
+            } = atom
+            {
+                let reduction = if Some(i) == last_trade {
+                    fee_value - applied
+                } else {
+                    fee_value * *proceeds / total
+                };
+                applied += reduction;
+                *proceeds -= reduction;
+
+                // Keep the gain portion(s) consistent with the reduced proceeds: each portion's
+                // net gain is its proceeds minus its basis. For split (US/territory) gains, only
+                // the territory portion's proceeds change; the US portion's gain is
+                // `bona_fide_basis - basis` and does not depend on the sale proceeds.
+                match net_gain {
+                    GainTerm::ShortUs(us) | GainTerm::LongUs(us) => {
+                        us.net_gain = *proceeds - us.basis;
+                    }
+                    GainTerm::ShortBonaFide(bf) | GainTerm::LongBonaFide(bf) => {
+                        bf.net_gain = *proceeds - bf.basis;
+                    }
+                    GainTerm::Short { bona_fide, .. } | GainTerm::Long { bona_fide, .. } => {
+                        bona_fide.net_gain = *proceeds - bona_fide.basis;
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -385,8 +465,8 @@ impl EventInfo {
     }
 }
 
-impl EventTradeAtom {
-    fn from_split<A>(
+impl EventAtom {
+    fn trade_from_split<A>(
         split: PoolAssetNonSplittable<A>,
         event_info: &EventInfo,
         gain_config: &GainConfig,
@@ -464,16 +544,14 @@ impl EventTradeAtom {
             }
         };
 
-        Ok(Self {
+        Ok(Self::Trade {
             asset_amount: -asset_amount, // Traded assets are always outgoing.
             proceeds,
             net_gain,
         })
     }
-}
 
-impl EventIncomeAtom {
-    fn from_split<A>(
+    fn income_from_split<A>(
         split: &PoolAsset<A>,
         event_info: &EventInfo,
     ) -> Result<Self, ExchangeRateError>
@@ -487,15 +565,13 @@ impl EventIncomeAtom {
                 .asset_in_exchange_rate
                 .expect("Exchange rate is required"),
         );
-        Ok(Self {
+        Ok(Self::Income {
             asset_amount,
             proceeds,
         })
     }
-}
 
-impl EventPositionAtom {
-    fn from_kraken_amount(
+    fn position_from_kraken_amount(
         asset_amount: KrakenAmount,
         event_info: &EventInfo,
         gain_config: &GainConfig,
@@ -517,18 +593,24 @@ impl EventPositionAtom {
             None => (proceeds, None),
         };
 
-        Self {
+        Self::Position {
             asset_amount,
             proceeds_us,
             proceeds_bona_fide,
         }
     }
-}
 
-impl EventFee {
-    fn from_split<A>(
+    /// Build a fee atom from a consumed pool split.
+    ///
+    /// `proceeds` is the fee's USD value at the moment of payment (`fee_rate`). `net_gain` is
+    /// that value minus the fee coin's cost basis, classified by the fee coin's basis date
+    /// (short-term/long-term against the event date, US/territory against the bona fide
+    /// residency date). Margin position rollovers become investment fee atoms (investment
+    /// interest expenses); all other fees become fee atoms.
+    fn from_fee_split<A>(
         split: PoolAssetNonSplittable<A>,
         event_info: &EventInfo,
+        fee_rate: UsdAmount,
         gain_config: &GainConfig,
     ) -> Result<Self, ExchangeRateError>
     where
@@ -536,9 +618,8 @@ impl EventFee {
         KrakenAmount: From<A>,
     {
         let asset_fee = KrakenAmount::from(split.amount);
-        let net_loss = {
-            // For fees, we calculate the net loss as the negative of fee basis, which simplifies
-            // the formula to not need the current exchange rate.
+        let proceeds = asset_fee.get_value_usd(fee_rate);
+        let net_gain = {
             let basis = asset_fee.get_value_usd(
                 split
                     .lifecycle
@@ -547,22 +628,22 @@ impl EventFee {
             let basis_date = split.lifecycle.get_datetime();
             let basis_synthetic_id = split.lifecycle.get_synthetic_id().to_string();
 
-            let loss_to_fee = GainPortion {
+            let net_gain_portion = GainPortion {
                 basis,
                 basis_date,
                 basis_synthetic_id,
-                net_gain: -basis, // Here is the negative fee basis.
+                net_gain: proceeds - basis,
             };
 
             let (us, bona_fide) = match gain_config.bona_fide_residency {
                 Some(move_date) => {
                     if basis_date < move_date {
-                        (Some(loss_to_fee), None)
+                        (Some(net_gain_portion), None)
                     } else {
-                        (None, Some(loss_to_fee))
+                        (None, Some(net_gain_portion))
                     }
                 }
-                None => (Some(loss_to_fee), None),
+                None => (Some(net_gain_portion), None),
             };
 
             // The short-term/long-term threshold for capital gains is one year
@@ -580,10 +661,19 @@ impl EventFee {
             }
         };
 
-        Ok(Self {
-            asset_fee: -asset_fee, // Fees are always outgoing.
-            net_loss,
-        })
+        if matches!(event_info.event_subtype, EventSubType::MarginRollover) {
+            Ok(Self::InvestmentFee {
+                asset_amount: -asset_fee, // Fees are always outgoing.
+                proceeds,
+                net_gain,
+            })
+        } else {
+            Ok(Self::Fee {
+                asset_amount: -asset_fee, // Fees are always outgoing.
+                proceeds,
+                net_gain,
+            })
+        }
     }
 }
 

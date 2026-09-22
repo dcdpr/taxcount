@@ -4,7 +4,7 @@ use crate::model::exchange_rate::ExchangeRates;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
-use std::ops::{Add, Neg, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::{fmt, str::FromStr};
 use thiserror::Error;
 
@@ -121,6 +121,12 @@ macro_rules! impl_math_ops {
                 Self(self.0 - rhs.0)
             }
         }
+
+        impl ::std::ops::SubAssign for $name {
+            fn sub_assign(&mut self, rhs: Self) {
+                self.0 -= rhs.0;
+            }
+        }
     };
 }
 
@@ -135,6 +141,38 @@ impl_math_ops!(UsdcAmount);
 impl_math_ops!(UsdtAmount);
 impl_math_ops!(FiatAmount);
 impl_math_ops!(UsdAmount);
+
+impl Mul for FiatAmount {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl Div for FiatAmount {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        Self(self.0 / rhs.0)
+    }
+}
+
+impl Mul for UsdAmount {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Self(self.0 * rhs.0)
+    }
+}
+
+impl Div for UsdAmount {
+    type Output = Self;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        Self(self.0 / rhs.0)
+    }
+}
 
 impl Add for KrakenAmount {
     type Output = Self;
@@ -810,11 +848,6 @@ impl fmt::Display for KrakenAmount {
 }
 
 impl UsdAmount {
-    /// Get the absolute value.
-    pub(crate) fn abs(self) -> Self {
-        Self(self.0.abs())
-    }
-
     /// Get the minimum between two [`UsdAmount`]s.
     pub(crate) fn min(self, other: Self) -> Self {
         Self(FiatAmount(self.0 .0.min(other.0 .0)))

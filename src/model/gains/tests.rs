@@ -7,8 +7,8 @@ fn usd(n: i64) -> UsdAmount {
 }
 
 /// Regression test for issue #3: pr_statement24_dates() must collect dates from
-/// tx_fees, not only trade_details. A worksheet with fee-only bona fide activity
-/// must still produce dates for the PR Statement-24 row.
+/// fee atoms in `event_details`, not only trade atoms. A worksheet with fee-only
+/// bona fide activity must still produce dates for the PR Statement-24 row.
 #[test]
 fn pr_statement24_dates_from_fees_only() {
     let basis_date = Utc.with_ymd_and_hms(2024, 6, 1, 0, 0, 0).unwrap();
@@ -24,19 +24,16 @@ fn pr_statement24_dates_from_fees_only() {
             asset_out_exchange_rate: String::new(),
             asset_in_exchange_rate: String::new(),
             proceeds: usd(0),
-            trade_details: vec![],
-            income_details: vec![],
-            position_details: vec![],
-            tx_fees: vec![EventFee {
-                asset_fee: KrakenAmount::Btc(BitcoinAmount::default()),
-                net_loss: GainTerm::ShortBonaFide(GainPortion {
+            event_details: vec![EventAtom::Fee {
+                asset_amount: KrakenAmount::Btc(BitcoinAmount::default()),
+                proceeds: usd(0),
+                net_gain: GainTerm::ShortBonaFide(GainPortion {
                     basis: usd(5000),
                     basis_date,
                     basis_synthetic_id: String::new(),
                     net_gain: usd(-5000),
                 }),
             }],
-            position_fees: vec![],
         }],
     };
 
