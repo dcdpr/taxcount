@@ -19,10 +19,9 @@ pub struct Event {
     /// Each taxable event has one worksheet row, encapsulated in `EventInfo`.
     pub(crate) event_info: EventInfo,
 
-    // TODO: This is created as an incomplete type, and this boolean informs the code that a
-    // pending withdrawal must be queued for the consumed assets. Replace this boolean with a
-    // DSL "pipeline" for manipulating the PoolAsset FIFOs.
-    // See: https://gl1.dcdpr.com/rgrant/taxcount/-/issues/59
+    // TODO: This is created as an incomplete type, and this boolean informs the code that a pending
+    // withdrawal must be queued for the consumed assets. Replace this boolean with a DSL "pipeline"
+    // for manipulating the PoolAsset FIFOs. See: https://gl1.dcdpr.com/rgrant/taxcount/-/issues/59
     pub(crate) is_withdrawal: bool,
 
     /// Zero or more detail atoms (may span multiple asset splits). Trade and fee atoms carry a
@@ -378,27 +377,36 @@ impl Event {
         (errors, fee_value)
     }
 
-    /// Reduce the proceeds of trade atoms added after `start`, pro-rata to each atom's
-    /// pre-reduction proceeds, so that the sum of the reductions is exactly `fee_value`.
+    /// Reduce the proceeds of the trade atoms added after `start`, pro-rata to each atom's amount
+    /// so that the sum of the reductions is exactly `fee_value`.
     ///
-    /// Trade fees offset the trade atoms' proceeds: the trade atoms' and fee atoms' proceeds
-    /// must sum to the event's total proceeds.
+    /// Trade fees offset the trade atoms' proceeds: the trade atoms' and fee atoms' proceeds must
+    /// sum to the event's total proceeds.
     pub(crate) fn reduce_trade_proceeds(&mut self, start: usize, fee_value: UsdAmount) {
         if fee_value == UsdAmount::default() {
             return;
         }
 
-        let total: UsdAmount = self
-            .event_details
-            .iter()
-            .skip(start)
-            .filter(|atom| matches!(atom, EventAtom::Trade { .. }))
-            .map(|atom| atom.proceeds().expect("Trade atom has proceeds"))
-            .fold(UsdAmount::default(), |acc, proceeds| acc + proceeds);
-
-        if total == UsdAmount::default() {
-            return;
+        // The trade atoms and the fee are denominated in the same asset (both are consumed from the
+        // event's pool), and every trade atom in an event is valued at the event's single
+        // definitional rate, so the pro-rata share of the fee by proceeds equals the pro-rata
+        // share by amount.
+        let mut total_amount: Option<KrakenAmount> = None;
+        for atom in self.event_details.iter().skip(start) {
+            if let EventAtom::Trade { asset_amount, .. } = atom {
+                total_amount = Some(match total_amount {
+                    Some(total) => total + asset_amount.abs(),
+                    None => asset_amount.abs(),
+                });
+            }
         }
+        let Some(total_amount) = total_amount else {
+            return;
+        };
+
+        // The fee's USD value per unit of the traded amount (the one division of this pro-rata
+        // split).
+        let fee_value_per_unit = fee_value.sub_divide(total_amount);
 
         // Find the last trade atom so any rounding difference lands there and the reductions
         // sum to exactly `fee_value`.
@@ -413,16 +421,19 @@ impl Event {
         let mut applied = UsdAmount::default();
         for (i, atom) in self.event_details.iter_mut().enumerate().skip(start) {
             if let EventAtom::Trade {
-                proceeds, net_gain, ..
+                asset_amount,
+                proceeds,
+                net_gain,
+                ..
             } = atom
             {
                 let reduction = if Some(i) == last_trade {
                     fee_value - applied
                 } else {
-                    fee_value * *proceeds / total
+                    asset_amount.abs().get_value_usd(fee_value_per_unit)
                 };
                 applied += reduction;
-                *proceeds -= reduction;
+                *proceeds = *proceeds - reduction;
 
                 // Keep the gain portion(s) consistent with the reduced proceeds: each portion's
                 // net gain is its proceeds minus its basis. For split (US/territory) gains, only
@@ -653,10 +664,8 @@ impl EventAtom {
             match (is_long_term, us, bona_fide) {
                 (false, Some(us), None) => GainTerm::ShortUs(us),
                 (false, None, Some(bona_fide)) => GainTerm::ShortBonaFide(bona_fide),
-                (false, Some(us), Some(bona_fide)) => GainTerm::Short { us, bona_fide },
                 (true, Some(us), None) => GainTerm::LongUs(us),
                 (true, None, Some(bona_fide)) => GainTerm::LongBonaFide(bona_fide),
-                (true, Some(us), Some(bona_fide)) => GainTerm::Long { us, bona_fide },
                 _ => unreachable!(),
             }
         };
