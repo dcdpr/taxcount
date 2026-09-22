@@ -2053,7 +2053,9 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
+                reduces_proceeds,
             } => {
+                assert!(*reduces_proceeds);
                 assert_eq!(asset_amount.to_decimal(), "-0.00020000".parse().unwrap());
                 // 0.0002 * 34885.60
                 assert_eq!(
@@ -2251,7 +2253,9 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
+                reduces_proceeds,
             } => {
+                assert!(*reduces_proceeds);
                 assert_eq!(
                     asset_amount,
                     &KrakenAmount::new("XXBT", "-0.00300000").unwrap(),
@@ -2385,7 +2389,9 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
+                reduces_proceeds,
             } => {
+                assert!(!*reduces_proceeds);
                 assert_eq!(
                     asset_amount,
                     &KrakenAmount::new("XXBT", "-0.03000000").unwrap(),
@@ -2609,7 +2615,9 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
+                reduces_proceeds,
             } => {
+                assert!(*reduces_proceeds);
                 assert_eq!(asset_amount.to_decimal(), "-0.00800000".parse().unwrap());
                 assert_eq!(*proceeds, usd("8.0000"));
                 let us = if fee.3 {
@@ -2746,7 +2754,9 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
+                reduces_proceeds,
             } => {
+                assert!(!*reduces_proceeds);
                 assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
                 assert_eq!(*proceeds, usd("20.0000"));
                 let us = long_us(net_gain);

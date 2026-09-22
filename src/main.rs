@@ -545,27 +545,6 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
             }
         }
 
-        if let Some(fees) = worksheet.fee_details() {
-            if let Some(path) = args.worksheet_path.as_ref().map(|root| {
-                let filename = format!("{}{worksheet_name}-fee-details.csv", args.worksheet_prefix);
-                root.join(filename)
-            }) {
-                std::fs::write(&path, fees.to_string())?;
-
-                let path = path.display();
-                let underline = "=".repeat(path.to_string().len());
-                println!("Cap Gains Fee Details written to {path}");
-                println!("=== ===== === ======= ======= == {underline}");
-                println!();
-            } else if args.verbose {
-                println!("Cap Gains Fee Details");
-                println!("=== ===== === =======");
-                println!();
-                println!("{fees}");
-                println!();
-            }
-        }
-
         let sums = worksheet.sums();
         if let Some(path) = args.worksheet_path.as_ref().map(|root| {
             let filename = format!("{}{worksheet_name}-sums.csv", args.worksheet_prefix);
