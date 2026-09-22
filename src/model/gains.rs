@@ -31,11 +31,6 @@ pub struct CapGainsEventDetails<'a> {
 }
 
 #[derive(Debug)]
-pub struct CapGainsFeeDetails<'a> {
-    details: Vec<(&'a str, &'a EventAtom)>,
-}
-
-#[derive(Debug)]
 pub struct Sums {
     ledger_proceeds: UsdAmount,
     gain_matrix: GainMatrix,
@@ -161,41 +156,41 @@ impl Display for GainTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
             GainTerm::ShortUs(us) => {
-                // Columns E-I
+                // Columns F-J
                 us.fmt_term(f, false)?;
-                // Columns J-N
+                // Columns K-O
                 f.write_str(r#","","","","","""#)
             }
             GainTerm::ShortBonaFide(bona_fide) => {
-                // Columns E-I
+                // Columns F-J
                 f.write_str(r#""","","","","","#)?;
-                // Columns J-N
+                // Columns K-O
                 bona_fide.fmt_term(f, false)
             }
             GainTerm::Short { us, bona_fide } => {
-                // Columns E-I
+                // Columns F-J
                 us.fmt_term(f, false)?;
                 f.write_str(",")?;
-                // Columns J-N
+                // Columns K-O
                 bona_fide.fmt_term(f, false)
             }
             GainTerm::LongUs(us) => {
-                // Columns E-I
+                // Columns F-J
                 us.fmt_term(f, true)?;
-                // Columns J-N
+                // Columns K-O
                 f.write_str(r#","","","","","""#)
             }
             GainTerm::LongBonaFide(bona_fide) => {
-                // Columns E-I
+                // Columns F-J
                 f.write_str(r#""","","","","","#)?;
-                // Columns J-N
+                // Columns K-O
                 bona_fide.fmt_term(f, true)
             }
             GainTerm::Long { us, bona_fide } => {
-                // Columns E-I
+                // Columns F-J
                 us.fmt_term(f, true)?;
                 f.write_str(",")?;
-                // Columns J-N
+                // Columns K-O
                 bona_fide.fmt_term(f, true)
             }
         }
@@ -232,12 +227,8 @@ impl Display for CapGainsEventDetails<'_> {
         writeln!(
             f,
             concat!(
-                // Columns A-B
-                r#""Ledger Row ID","Atom","#,
-                // Columns C-D
-                r#""Asset Name","Asset Amount","#,
-                // Column E
-                r#""Proceeds","#,
+                // Columns A-E
+                r#""Ledger Row ID","Event","Asset Name","Asset Amount","Proceeds","#,
                 //
                 // TODO: I'm not a fan of flattening the matrix in this way. Can it be done better?
                 //
@@ -255,49 +246,7 @@ impl Display for CapGainsEventDetails<'_> {
         // Write CSV rows
         // Column A-B, and columns C-O
         for (ledger_row_id, atom) in &self.details {
-            writeln!(
-                f,
-                r#""{ledger_row_id}","{atom_name}",{atom}"#,
-                atom_name = atom.name()
-            )?;
-        }
-
-        Ok(())
-    }
-}
-
-impl Display for CapGainsFeeDetails<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Write the CSV header
-        writeln!(
-            f,
-            concat!(
-                // Columns A-C
-                r#""Ledger Row ID","Atom","Asset Name","Asset Amount","#,
-                // Column D
-                r#""Proceeds","#,
-                //
-                // TODO: I'm not a fan of flattening the matrix in this way. Can it be done better?
-                //
-                // Columns E-G
-                r#""Basis (US)","Basis Date (US)","Basis Synthetic ID (US)","#,
-                // Columns H-I
-                r#""Net Capital Gains (US Short Term)","Net Capital Gains (US Long Term)","#,
-                // Columns J-L
-                r#""Basis (Non-US)","Basis Date (Non-US)","Basis Synthetic ID (Non-US)","#,
-                // Columns M-N
-                r#""Net Capital Gains (Non-US Short Term)","Net Capital Gains (Non-US Long Term)""#,
-            )
-        )?;
-
-        // Write CSV rows
-        // Column A-D, and columns E-N
-        for (ledger_row_id, atom) in &self.details {
-            writeln!(
-                f,
-                r#""{ledger_row_id}","{atom_name}",{atom}"#,
-                atom_name = atom.name()
-            )?;
+            writeln!(f, r#""{ledger_row_id}","{}",{atom}"#, atom.name())?;
         }
 
         Ok(())
@@ -306,7 +255,7 @@ impl Display for CapGainsFeeDetails<'_> {
 
 impl Display for EventAtom {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Columns B-D
+        // Columns C-E
         write!(
             f,
             r#""{asset_name}","{asset_amount}","{proceeds}","#,
@@ -314,10 +263,10 @@ impl Display for EventAtom {
             asset_amount = self.asset_amount(),
             proceeds = self.proceeds().unwrap_or_default(),
         )?;
-        // Columns E-N
+        // Columns F-O
         match self.net_gain() {
             Some(net_gain) => write!(f, "{net_gain}"),
-            None => f.write_str(r#""","","","","","""#),
+            None => f.write_str(r#""","","","","","","","","","""#),
         }
     }
 }
@@ -330,7 +279,7 @@ impl EventAtom {
             Self::Income { .. } => "Income",
             Self::Position { .. } => "Position",
             Self::Fee { .. } => "Fee",
-            Self::InvestmentFee { .. } => "InvestmentFee",
+            Self::InvestmentFee { .. } => "Investment Fee",
         }
     }
 
@@ -493,7 +442,7 @@ impl CapGainsWorksheet {
         }
     }
 
-    pub fn fee_details(&self) -> Option<CapGainsFeeDetails<'_>> {
+    pub fn fee_details(&self) -> Option<CapGainsEventDetails<'_>> {
         let details: Vec<_> = self
             .worksheet
             .iter()
@@ -513,7 +462,7 @@ impl CapGainsWorksheet {
         if details.is_empty() {
             None
         } else {
-            Some(CapGainsFeeDetails { details })
+            Some(CapGainsEventDetails { details })
         }
     }
 

@@ -205,13 +205,13 @@ impl BasisLifecycle {
             Origin::Base => Ok(UsdAmount::from("1.0".parse::<FiatAmount>().unwrap())),
             Origin::Bucket(bucket) | Origin::Income(bucket) => Ok(bucket.exchange_rate),
             Origin::TradeBuy(LedgerTwoRowTrade { row_out, row_in }) => {
-                // Capitalize the fee into the acquired lot's basis when the buy is
-                // fiat-denominated: the fee is paid in the same currency as the trade amount,
-                // so its USD value at the moment of payment equals its face value, and it can
-                // be added directly to the trade amount.
+                // Capitalize the fee into the acquired split's basis when the buy is
+                // fiat-denominated: the fee is paid in the same currency as the trade amount, so
+                // its USD value at the moment of payment equals its face value, and it can be
+                // added directly to the trade amount.
                 //
-                // When the buy is crypto-denominated (e.g. XETHXXBT), the fee is a capital
-                // asset whose disposal is reported separately as a fee atom, so it must not be
+                // When the buy is crypto-denominated (e.g. XETHXXBT), the fee is a capital asset
+                // whose disposal is reported separately as a fee atom, so it must not be
                 // capitalized here.
                 let a = if matches!(row_out.amount, KrakenAmount::Usd(_)) {
                     row_out.amount.abs() + row_out.fee
