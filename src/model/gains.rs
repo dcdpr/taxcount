@@ -464,11 +464,7 @@ fn negated(amount: UsdAmount) -> String {
 
 /// Render a CSV column string that is stored in the positive convention as its negation.
 fn negated_str(s: String) -> String {
-    if s.is_empty() {
-        s
-    } else {
-        format!("-{s}")
-    }
+    if s.is_empty() { s } else { format!("-{s}") }
 }
 
 impl CapGainsWorksheet {
@@ -734,19 +730,6 @@ impl CapGainsWorksheet {
 
                 gain_matrix.position_fees += proceeds;
             }
-            GainTerm::Short { us, bona_fide } => {
-                // A single atom's gain is currently always attributed to either the US or the
-                // bona fide column exclusively; the combined variant splits the proceeds
-                // proportionally to basis if it is ever produced.
-                let us_share = split_proceeds(proceeds, us.basis, bona_fide.basis);
-                gain_matrix.us_short.position_fees += us_share;
-
-                let gain_matrix = gain_matrix
-                    .bona_fide_short
-                    .get_or_insert_with(Default::default);
-
-                gain_matrix.position_fees += proceeds - us_share;
-            }
             GainTerm::LongUs(_) => {
                 gain_matrix.us_long.position_fees += proceeds;
             }
@@ -757,32 +740,12 @@ impl CapGainsWorksheet {
 
                 gain_matrix.position_fees += proceeds;
             }
-            GainTerm::Long { us, bona_fide } => {
-                // See `GainTerm::Short` above.
-                let us_share = split_proceeds(proceeds, us.basis, bona_fide.basis);
-                gain_matrix.us_long.position_fees += us_share;
-
-                let gain_matrix = gain_matrix
-                    .bona_fide_long
-                    .get_or_insert_with(Default::default);
-
-                gain_matrix.position_fees += proceeds - us_share;
-            }
+            _ => unreachable!(
+                "Fee atoms are unsplittable by definition. The fee in the large may be attributed \
+                 to both the US and bona fide columns, but only by spanning multiple fee atoms \
+                 that straddle the bona fide residency date (see `EventAtom::from_fee_split`)."
+            ),
         }
-    }
-}
-
-/// Split `proceeds` between the US and bona fide columns proportionally to basis.
-fn split_proceeds(
-    proceeds: UsdAmount,
-    us_basis: UsdAmount,
-    bona_fide_basis: UsdAmount,
-) -> UsdAmount {
-    let total = us_basis + bona_fide_basis;
-    if total == UsdAmount::default() {
-        UsdAmount::default()
-    } else {
-        proceeds * us_basis / total
     }
 }
 
@@ -822,6 +785,18 @@ impl Sums {
     #[cfg(test)]
     pub(crate) fn gains_us_long(&self) -> UsdAmount {
         self.gains_us_long
+    }
+
+    /// The US long-term trade proceeds.
+    #[cfg(test)]
+    pub(crate) fn us_long_trade_proceeds(&self) -> UsdAmount {
+        self.gain_matrix.us_long.trade_proceeds
+    }
+
+    /// The US long-term trade basis.
+    #[cfg(test)]
+    pub(crate) fn us_long_trade_basis(&self) -> UsdAmount {
+        self.gain_matrix.us_long.trade_basis
     }
 
     /// The US long-term trade gain before the interest-expense cap.

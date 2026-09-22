@@ -1,18 +1,16 @@
-use super::lookup::{BasisLookup, BasisLookupExt};
 use super::ToNonSplittable as _;
+use super::lookup::{BasisLookup, BasisLookupExt};
 use super::{Asset, AssetName, BasisLifecycle, PoolAsset, PoolAssetSplit};
 use crate::errors::ExchangeRateError;
 use crate::imports::wallet::{LoanRole, Tx, TxType};
 use crate::model::blockchain::{BlockchainExt, TimeOrderedBlockchain};
 use crate::model::checkpoint::{Pending, PendingAccountTx, PendingTxInfo, PendingUtxo, State};
 use crate::model::events::{Event, GainConfig, WalletDirection};
-use crate::model::kraken_amount::{
-    BitcoinAmount, EthWAmount, EtherAmount, FiatAmount, UsdcAmount, UsdtAmount,
-};
-use crate::model::kraken_amount::{KrakenAmount, UsdAmount};
+use crate::model::kraken_amount::{BitcoinAmount, EthWAmount, EtherAmount, FiatAmount};
+use crate::model::kraken_amount::{KrakenAmount, UsdAmount, UsdcAmount, UsdtAmount};
 use crate::model::ledgers::parsed::{LedgerMarginClose, LedgerParsed, LedgerTwoRowTrade};
 use crate::model::ledgers::rows::{BasisRow, LedgerRowDeposit, TradeRow};
-use crate::model::pairs::{get_asset_pair, Trade};
+use crate::model::pairs::{Trade, get_asset_pair};
 use crate::util::fifo::FIFO;
 use chrono::{DateTime, Utc};
 use error_iter::ErrorIter as _;
@@ -288,7 +286,7 @@ macro_rules! match_one_tx_inner {
             {
                 Ok(fifo) => fifo,
                 Err(err) => {
-                    return vec![Err(PriceError::BlockchainTx($tx.txid.clone(), err.into()))]
+                    return vec![Err(PriceError::BlockchainTx($tx.txid.clone(), err.into()))];
                 }
             };
 
@@ -1936,6 +1934,7 @@ mod tests {
     use crate::model::exchange_rate::{ExchangeRateMap, ExchangeRates};
     use crate::model::ledgers::rows::LedgerRowTypical;
     use crate::model::{
+        CapGainsWorksheet,
         blockchain::Utxo,
         events::{EventAtom, GainTerm},
         kraken_amount::FiatAmount,
@@ -2160,6 +2159,242 @@ mod tests {
             }
             other => panic!("Expected fee atom, got {other:#?}"),
         }
+    }
+
+    /// Setup like [`setup`], but the exchange BTC pool has two lots with different basis.
+    fn setup_two_lots() -> (State, ExchangeRates) {
+        let state = State {
+            header: CheckpointHeader {
+                time: "now".to_string(),
+                semver: "0.0.1".to_string(),
+                gitver: GitverHashes::default(),
+                latest_row_time: None,
+            },
+            on_chain_balances: UtxoBalances::default(),
+            exchange_balances: Balances {
+                btc: FIFO::from_iter([
+                    PoolAsset::from_basis_row(&BasisRow {
+                        synthetic_id: "lot-1:0".to_string(),
+                        time: get_datetime("2019-09-08 19:38:42"),
+                        asset: "XXBT".to_string(),
+                        amount: Some(KrakenAmount::new("XXBT", "0.06000000").unwrap()),
+                        exchange_rate: "100.00".parse().unwrap(),
+                    }),
+                    PoolAsset::from_basis_row(&BasisRow {
+                        synthetic_id: "lot-2:0".to_string(),
+                        time: get_datetime("2024-03-01 12:00:00"),
+                        asset: "XXBT".to_string(),
+                        amount: Some(KrakenAmount::new("XXBT", "0.10000000").unwrap()),
+                        exchange_rate: "200.00".parse().unwrap(),
+                    }),
+                ]),
+                ..Balances::default()
+            },
+            ..State::new(bdk::bitcoin::Network::Testnet)
+        };
+
+        let exchange_rates_db = ExchangeRates::from_raw(
+            60 * 60 * 24 - 1,           // granularity
+            ExchangeRateMap::default(), // BTC
+            ExchangeRateMap::default(), // CHF
+            ExchangeRateMap::default(), // ETH
+            ExchangeRateMap::default(), // ETHW
+            ExchangeRateMap::default(), // EUR
+            ExchangeRateMap::default(), // JPY
+            ExchangeRateMap::default(), // USDC
+            ExchangeRateMap::default(), // USDT
+        );
+
+        (state, exchange_rates_db)
+    }
+
+    /// Selling 0.15 BTC spanning two lots (0.06 @ $100, 0.09 @ $200) for 15,000 ZUSD with a
+    /// 0.003 BTC fee. The fee value (300 USD) must be split pro-rata across the two trade
+    /// atoms (120 and 180), so the trade atoms' and fee atom's proceeds sum to the event's
+    /// total proceeds.
+    #[test]
+    #[traced_test]
+    fn test_multi_lot_sale_fee_pro_rata_reduction() {
+        let _ = tracing_log::LogTracer::init();
+
+        let (mut state, exchange_rates_db) = setup_two_lots();
+        let mut args = Args {
+            gain_config: GainConfig {
+                exchange_rates_db,
+                bona_fide_residency: None,
+            },
+            trades: HashMap::from([(
+                "trade-1".to_string(),
+                // Definitional price: 15000 ZUSD for 0.15 BTC = 100000 ZUSD per BTC.
+                KrakenAmount::new("ZUSD", "100000.00").unwrap(),
+            )]),
+            pending_spends: Pending::default(),
+            pending_withdrawals: Pending::default(),
+            basis_lookup: BasisLookup::default(),
+        };
+
+        let lp = Rc::new(LedgerParsed::Trade {
+            row_out: LedgerRowTypical {
+                txid: "outgoing-1".to_string(),
+                refid: "trade-1".to_string(),
+                time: get_datetime("2026-07-20 10:00:00"),
+                amount: KrakenAmount::new("XXBT", "-0.15000000").unwrap(),
+                fee: KrakenAmount::new("XXBT", "0.00300000").unwrap(),
+                balance: KrakenAmount::new("XXBT", "0.00700000").unwrap(),
+            },
+            row_in: LedgerRowTypical {
+                txid: "incoming-1".to_string(),
+                refid: "trade-1".to_string(),
+                time: get_datetime("2026-07-20 10:00:00"),
+                amount: KrakenAmount::new("ZUSD", "15000.00").unwrap(),
+                fee: KrakenAmount::new("ZUSD", "0.00").unwrap(),
+                balance: KrakenAmount::new("ZUSD", "0.00").unwrap(),
+            },
+        });
+
+        let actual = state.handle_trade(&Rc::from("example-worksheet"), lp, &mut args);
+        assert_eq!(actual.len(), 1);
+        let event = &actual[0].as_ref().unwrap();
+
+        assert_eq!(
+            event.event_info.proceeds,
+            UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
+        );
+        // Two trade atoms (one per lot) and one fee atom.
+        assert_eq!(event.event_details.len(), 3);
+
+        match &event.event_details[0] {
+            EventAtom::Trade {
+                asset_amount,
+                proceeds,
+                net_gain,
+            } => {
+                assert_eq!(
+                    asset_amount,
+                    &KrakenAmount::new("XXBT", "-0.06000000").unwrap(),
+                );
+                // 0.06 * 100000 - 0.06 * 2000 (pro-rata fee: 300 * 0.06/0.15)
+                assert_eq!(
+                    *proceeds,
+                    UsdAmount::from("5880.00".parse::<FiatAmount>().unwrap()),
+                );
+                match net_gain {
+                    GainTerm::LongUs(us) => {
+                        assert_eq!(
+                            us.basis,
+                            UsdAmount::from("6.00".parse::<FiatAmount>().unwrap()),
+                        );
+                        assert_eq!(
+                            us.net_gain,
+                            UsdAmount::from("5874.00".parse::<FiatAmount>().unwrap()),
+                        );
+                        assert_eq!(us.basis_date, get_datetime("2019-09-08 19:38:42"));
+                    }
+                    other => panic!("Unexpected gain term: {other:#?}"),
+                }
+            }
+            other => panic!("Expected trade atom, got {other:#?}"),
+        }
+
+        match &event.event_details[1] {
+            EventAtom::Trade {
+                asset_amount,
+                proceeds,
+                net_gain,
+            } => {
+                assert_eq!(
+                    asset_amount,
+                    &KrakenAmount::new("XXBT", "-0.09000000").unwrap(),
+                );
+                // 0.09 * 100000 - 180 (remainder of the fee value, absorbed by the last atom)
+                assert_eq!(
+                    *proceeds,
+                    UsdAmount::from("8820.00".parse::<FiatAmount>().unwrap()),
+                );
+                match net_gain {
+                    GainTerm::LongUs(us) => {
+                        assert_eq!(
+                            us.basis,
+                            UsdAmount::from("18.00".parse::<FiatAmount>().unwrap()),
+                        );
+                        assert_eq!(
+                            us.net_gain,
+                            UsdAmount::from("8802.00".parse::<FiatAmount>().unwrap()),
+                        );
+                        assert_eq!(us.basis_date, get_datetime("2024-03-01 12:00:00"));
+                    }
+                    other => panic!("Unexpected gain term: {other:#?}"),
+                }
+            }
+            other => panic!("Expected trade atom, got {other:#?}"),
+        }
+
+        match &event.event_details[2] {
+            EventAtom::Fee {
+                asset_amount,
+                proceeds,
+                net_gain,
+            } => {
+                assert_eq!(
+                    asset_amount,
+                    &KrakenAmount::new("XXBT", "-0.00300000").unwrap(),
+                );
+                // 0.003 * 100000 (definitional rate)
+                assert_eq!(
+                    *proceeds,
+                    UsdAmount::from("300.00".parse::<FiatAmount>().unwrap()),
+                );
+                match net_gain {
+                    GainTerm::LongUs(us) => {
+                        // The fee is consumed from lot 2 after the trade: 0.003 * 200
+                        assert_eq!(
+                            us.basis,
+                            UsdAmount::from("0.60".parse::<FiatAmount>().unwrap()),
+                        );
+                        assert_eq!(
+                            us.net_gain,
+                            UsdAmount::from("299.40".parse::<FiatAmount>().unwrap()),
+                        );
+                        assert_eq!(us.basis_date, get_datetime("2024-03-01 12:00:00"));
+                    }
+                    other => panic!("Unexpected gain term: {other:#?}"),
+                }
+            }
+            other => panic!("Expected fee atom, got {other:#?}"),
+        }
+
+        let owned_event = (**event).clone();
+        let sums = CapGainsWorksheet::new(vec![owned_event]).sums();
+        sums.assert_error_check();
+        assert_eq!(
+            sums.ledger_proceeds(),
+            UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
+        );
+        assert_eq!(
+            sums.us_long_trade_proceeds(),
+            UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
+        );
+        assert_eq!(
+            sums.us_long_trade_basis(),
+            UsdAmount::from("24.60".parse::<FiatAmount>().unwrap()),
+        );
+        assert_eq!(
+            sums.us_long_trade_gain(),
+            UsdAmount::from("14975.40".parse::<FiatAmount>().unwrap()),
+        );
+        assert_eq!(
+            sums.gains_us_long(),
+            UsdAmount::from("14975.40".parse::<FiatAmount>().unwrap()),
+        );
+        assert_eq!(sums.gains_us_short(), UsdAmount::default(),);
+
+        // 0.10 - 0.09 - 0.003 = 0.007 of lot 2 remains.
+        let lots: Vec<_> = state.exchange_balances.btc.iter().collect();
+        assert_eq!(lots.len(), 1);
+        assert_eq!(
+            KrakenAmount::from(lots[0].amount),
+            KrakenAmount::new("XXBT", "0.00700000").unwrap(),
+        );
     }
 
     #[test]
