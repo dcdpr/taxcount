@@ -33,6 +33,7 @@ fn pr_statement24_dates_from_fees_only() {
                     basis_synthetic_id: String::new(),
                     net_gain: usd(-5000),
                 }),
+                reduces_proceeds: false,
             }],
         }],
     };

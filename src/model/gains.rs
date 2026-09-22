@@ -57,11 +57,11 @@ struct GainMatrixShort {
     trade_basis: UsdAmount,
     trade_proceeds: UsdAmount,
     trade_gain: UsdAmount,
+    position_proceeds: UsdAmount,
     /// Total investment interest expense (payment-time value).
     position_fees: UsdAmount,
     /// Investment interest expense deduction taken this year.
     position_fees_min: UsdAmount,
-    position_proceeds: UsdAmount,
 }
 
 /// Long-term columns in the gains matrix.
@@ -362,34 +362,35 @@ impl Display for Sums {
         )?;
 
         // Row 3
-        // The interest expense is stored in the positive convention; render it negated.
-        writeln!(
-            f,
-            r#""Interest Expense","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = negated(self.gain_matrix.us_long.position_fees),
-            us_short = negated(self.gain_matrix.us_short.position_fees),
-            bona_fide_long = negated_str(bona_fide_long.to_csv_string(|col| col.position_fees)),
-            bona_fide_short = negated_str(bona_fide_short.to_csv_string(|col| col.position_fees)),
-        )?;
-
-        // Row 4
-        // The limited interest expense is stored in the positive convention; render it negated.
-        writeln!(
-            f,
-            r#""Limited Interest Expense","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = negated(self.gain_matrix.us_long.position_fees_min),
-            us_short = negated(self.gain_matrix.us_short.position_fees_min),
-            bona_fide_long = negated_str(bona_fide_long.to_csv_string(|col| col.position_fees_min)),
-            bona_fide_short =
-                negated_str(bona_fide_short.to_csv_string(|col| col.position_fees_min)),
-        )?;
-
-        // Row 5
         writeln!(
             f,
             r#""Position Proceeds","","{us_short}","","{bona_fide_short}""#,
             us_short = self.gain_matrix.us_short.position_proceeds,
             bona_fide_short = bona_fide_short.to_csv_string(|col| col.position_proceeds),
+        )?;
+
+        // Row 4
+        // The interest expense is stored in the positive convention; render it negated.
+        // TODO: Negation renders `-0.0000`. Consider a method that returns positive zero.
+        writeln!(
+            f,
+            r#""Interest Expense","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
+            us_long = -self.gain_matrix.us_long.position_fees,
+            us_short = -self.gain_matrix.us_short.position_fees,
+            bona_fide_long = bona_fide_long.to_csv_string(|col| -col.position_fees),
+            bona_fide_short = bona_fide_short.to_csv_string(|col| -col.position_fees),
+        )?;
+
+        // Row 5
+        // The limited interest expense is stored in the positive convention; render it negated.
+        // TODO: Negation renders `-0.0000`. Consider a method that returns positive zero.
+        writeln!(
+            f,
+            r#""Limited Interest Expense","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
+            us_long = -self.gain_matrix.us_long.position_fees_min,
+            us_short = -self.gain_matrix.us_short.position_fees_min,
+            bona_fide_long = bona_fide_long.to_csv_string(|col| -col.position_fees_min),
+            bona_fide_short = bona_fide_short.to_csv_string(|col| -col.position_fees_min),
         )?;
 
         // Row 6
@@ -404,16 +405,6 @@ impl Display for Sums {
 
         Ok(())
     }
-}
-
-/// Render an amount that is stored in the positive convention as its negation.
-fn negated(amount: UsdAmount) -> String {
-    negated_str(amount.to_string())
-}
-
-/// Render a CSV column string that is stored in the positive convention as its negation.
-fn negated_str(s: String) -> String {
-    if s.is_empty() { s } else { format!("-{s}") }
 }
 
 impl CapGainsWorksheet {
@@ -431,30 +422,6 @@ impl CapGainsWorksheet {
             .flat_map(|row| {
                 row.event_details
                     .iter()
-                    .map(|detail| (row.ledger_row_id.as_str(), detail))
-            })
-            .collect();
-
-        if details.is_empty() {
-            None
-        } else {
-            Some(CapGainsEventDetails { details })
-        }
-    }
-
-    pub fn fee_details(&self) -> Option<CapGainsEventDetails<'_>> {
-        let details: Vec<_> = self
-            .worksheet
-            .iter()
-            .flat_map(|row| {
-                row.event_details
-                    .iter()
-                    .filter(|atom| {
-                        matches!(
-                            atom,
-                            EventAtom::Fee { .. } | EventAtom::InvestmentFee { .. }
-                        )
-                    })
                     .map(|detail| (row.ledger_row_id.as_str(), detail))
             })
             .collect();
@@ -502,16 +469,6 @@ impl CapGainsWorksheet {
             .worksheet
             .iter()
             .fold(GainMatrix::default(), |mut acc, row| {
-                // A fee atom's proceeds flow to `trade_proceeds` only when the row contains at
-                // least one trade atom: in that case the fee offsets the trade atom's proceeds,
-                // and the trade atoms' and fee atoms' proceeds must sum to the event's total
-                // proceeds. Rows without a trade atom (withdrawal, deposit, margin, wallet
-                // events) have no proceeds to offset, so the fee atom's proceeds go nowhere.
-                let has_trade_atom = row
-                    .event_details
-                    .iter()
-                    .any(|atom| matches!(atom, EventAtom::Trade { .. }));
-
                 for atom in &row.event_details {
                     match atom {
                         EventAtom::Trade {
@@ -536,12 +493,21 @@ impl CapGainsWorksheet {
                             }
                         }
                         EventAtom::Fee {
-                            proceeds, net_gain, ..
+                            proceeds,
+                            net_gain,
+                            reduces_proceeds,
+                            ..
                         } => {
+                            // A fee atom's proceeds flow to `trade_proceeds` only when the fee
+                            // reduces the trade atoms' proceeds on the same ledger row as the
+                            // outgoing amount: in that case the trade atoms' and fee atoms'
+                            // proceeds must sum to the event's total proceeds. All other fee
+                            // atoms (row_in fees, withdrawal, deposit, margin, wallet events) book
+                            // their proceeds nowhere.
                             Self::fold_gain_term(
                                 &mut acc,
                                 net_gain,
-                                has_trade_atom.then_some(*proceeds),
+                                (*reduces_proceeds).then_some(*proceeds),
                             );
                         }
                         EventAtom::InvestmentFee {
