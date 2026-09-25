@@ -3,7 +3,7 @@ pub use self::split::{Events, PriceError};
 pub(crate) use self::{bucket::*, lifecycle::*, poolasset::*, split::*};
 use crate::model::events::Event;
 use error_iter::ErrorIter as _;
-use std::{collections::HashMap, fmt::Display, rc::Rc};
+use std::{collections::BTreeMap, fmt::Display, rc::Rc};
 use thiserror::Error;
 
 mod bucket;
@@ -51,9 +51,9 @@ impl Display for CheckList {
 impl CheckList {
     /// Consume resolved events and execute the checklist, separating errors from events.
     ///
-    /// Prints the checklist and returns the events if there were no errors encountered. The hashmap
-    /// returned maps worksheets to events (once again advancing typestate).
-    pub fn execute(events: Events) -> Result<HashMap<Rc<str>, Vec<Event>>, CheckListError> {
+    /// Prints the checklist and returns the events if there were no errors encountered. The
+    /// BTreeMap returned maps worksheets to events (once again advancing typestate).
+    pub fn execute(events: Events) -> Result<BTreeMap<Rc<str>, Vec<Event>>, CheckListError> {
         let (events, errors): (Vec<_>, Vec<_>) =
             events.inner.into_iter().partition(|res| res.is_ok());
 
@@ -64,7 +64,7 @@ impl CheckList {
         println!("{checklist}");
 
         if checklist.is_passing() {
-            let mut events = HashMap::<_, Vec<Event>>::new();
+            let mut events = BTreeMap::<_, Vec<Event>>::new();
             for event in checklist.resolved.into_iter() {
                 events
                     .entry(event.worksheet_name.clone())
