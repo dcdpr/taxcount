@@ -904,10 +904,19 @@ impl State {
             // Handle inputs and outputs separately.
             //
             // A fiat-denominated buy capitalizes the fee into the acquired split's basis (see
-            // `BasisLifecycle::get_exchange_rate_at_acquisition`), so the fee is not released
-            // as a fee atom.
+            // `BasisLifecycle::get_exchange_rate_at_acquisition`), so the fee is not released as a
+            // fee atom. The fee still leaves the fiat pool: without the consumption the pool drifts
+            // from the ledger balance, and the next year's `assert_balance` fails.
             let row_out_fee =
                 if row_in.amount.is_positive() && matches!(row_out.amount, KrakenAmount::Usd(_)) {
+                    if !row_out.fee.is_zero() {
+                        if let Err(err) =
+                            consume_poolasset(&mut self.exchange_balances.usd, -row_out.fee)
+                        {
+                            return vec![Err(err)];
+                        }
+                    }
+
                     KrakenAmount::Usd(FiatAmount::default())
                 } else {
                     -row_out.fee
@@ -1852,6 +1861,7 @@ mod tests {
     use crate::model::checkpoint::{Balances, CheckpointHeader, UtxoBalances};
     use crate::model::events::{EventAtom, EventSubType, GainPortion, GainTerm};
     use crate::model::exchange_rate::{ExchangeRateMap, ExchangeRates};
+    use crate::model::kraken_amount::PoolUsdAmount;
     use crate::model::ledgers::rows::{BasisRow, LedgerRowTypical};
     use crate::model::{blockchain::Utxo, CapGainsWorksheet, Stats, Sums};
     use chrono::NaiveDateTime;
@@ -2682,6 +2692,12 @@ mod tests {
 
         // Remaining BTC split: 0.992 at $1,008. ETH basis: 20 ETH at $50.
         assert_pool(&state.exchange_balances.btc, &db, "0.99200000", "1008.0000");
+        // The capitalized USD buy fees must still leave the USD pool, or it drifts from the
+        // ledger balance and the next year's `assert_balance` fails.
+        assert_eq!(
+            state.exchange_balances.usd.amount(),
+            PoolUsdAmount::default(),
+        );
         let eth: Vec<_> = state.exchange_balances.eth.iter().collect();
         assert_eq!(eth.len(), 1);
         assert_eq!(
@@ -2718,6 +2734,12 @@ mod tests {
 
         // The remaining BTC is the tail of the LT split (the ST split was fully sold).
         assert_pool(&state.exchange_balances.btc, &db, "0.99200000", "10.0000");
+        // The capitalized USD buy fee must still leave the USD pool, or it drifts from the
+        // ledger balance and the next year's `assert_balance` fails.
+        assert_eq!(
+            state.exchange_balances.usd.amount(),
+            PoolUsdAmount::default(),
+        );
         let eth: Vec<_> = state.exchange_balances.eth.iter().collect();
         assert_eq!(eth.len(), 1);
         let rate = eth[0]
@@ -2808,6 +2830,12 @@ mod tests {
 
         // Remaining BTC split: 0.872 at $10.
         assert_pool(&state.exchange_balances.btc, &db, "0.87200000", "10.0000");
+        // The capitalized USD buy fee must still leave the USD pool, or it drifts from the
+        // ledger balance and the next year's `assert_balance` fails.
+        assert_eq!(
+            state.exchange_balances.usd.amount(),
+            PoolUsdAmount::default(),
+        );
 
         // ETH basis: 20 ETH at the defined rate of $50, i.e. $1,000.
         let eth: Vec<_> = state.exchange_balances.eth.iter().collect();

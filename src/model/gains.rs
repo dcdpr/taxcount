@@ -1,6 +1,6 @@
 use crate::model::events::{Event, EventAtom, EventSubType};
 use crate::model::events::{GainPortion, GainTerm};
-use crate::model::kraken_amount::{KrakenAmount, UsdAmount};
+use crate::model::kraken_amount::UsdAmount;
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
 
