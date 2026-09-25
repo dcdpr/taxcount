@@ -915,6 +915,8 @@ impl State {
                         {
                             return vec![Err(err)];
                         }
+                        // No fee atom is created, but the worksheet still reports the fee's asset.
+                        event.set_fee_asset_name(row_out.fee.get_asset());
                     }
 
                     KrakenAmount::Usd(FiatAmount::default())
