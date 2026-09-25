@@ -1,4 +1,4 @@
-use crate::basis::{Asset, PoolAsset, PoolAssetNonSplittable};
+use crate::basis::{Asset, AssetName, PoolAsset, PoolAssetNonSplittable};
 use crate::errors::ExchangeRateError;
 use crate::imports::wallet::TxType;
 use crate::model::kraken_amount::{KrakenAmount, UsdAmount};
@@ -28,6 +28,12 @@ pub struct Event {
     ///
     /// Trade and fee atoms have a cost basis, position atoms do not.
     pub(crate) event_details: Vec<EventAtom>,
+
+    /// The asset in which this event paid its fees.
+    ///
+    /// This may be `Some` even when no fee atoms exist: a fiat-denominated buy capitalizes its fee
+    /// into the acquired split's basis. No fee atom is created but a fee was still paid.
+    pub(crate) fee_asset_name: Option<AssetName>,
 }
 
 /// Extra info for taxable events.
@@ -239,6 +245,7 @@ impl Event {
             ),
             is_withdrawal,
             event_details: vec![],
+            fee_asset_name: None,
         }
     }
 
@@ -279,6 +286,7 @@ impl Event {
             ),
             is_withdrawal: false,
             event_details: vec![],
+            fee_asset_name: None,
         }
     }
 
@@ -374,6 +382,7 @@ impl Event {
             match EventAtom::from_fee_split(asset, &self.event_info, rate, gain_config) {
                 Ok(atom) => {
                     fee_value += atom.proceeds().expect("Fee atom has proceeds");
+                    self.set_fee_asset_name(atom.asset_amount().get_asset());
                     self.event_details.push(atom);
                 }
                 Err(err) => errors.push(err),
@@ -381,6 +390,19 @@ impl Event {
         }
 
         (errors, fee_value)
+    }
+
+    /// Record the asset of a fee paid by this event.
+    ///
+    /// Called both when a fee atom is added and when a fee is paid without an atom (a
+    /// fiat-denominated buy capitalizes its fee into the acquired split's basis).
+    ///
+    /// An event pays all of its fees in a single asset; a second, different asset is a bug.
+    pub(crate) fn set_fee_asset_name(&mut self, name: AssetName) {
+        if let Some(known) = self.fee_asset_name {
+            assert_eq!(known, name, "event pays fees in more than one asset");
+        }
+        self.fee_asset_name = Some(name);
     }
 
     /// Reduce the proceeds of the trade atoms added after `start`, pro-rata to each atom's amount

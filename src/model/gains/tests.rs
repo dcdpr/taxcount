@@ -23,6 +23,7 @@ fn pr_statement24_dates_from_fees_only() {
             event_name: String::new(),
             asset_out_exchange_rate: String::new(),
             asset_in_exchange_rate: String::new(),
+            fee_asset_name: Some(AssetName::Btc),
             proceeds: usd(0),
             event_details: vec![EventAtom::Fee {
                 asset_amount: KrakenAmount::Btc(BitcoinAmount::default()),

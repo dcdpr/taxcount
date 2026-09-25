@@ -1,6 +1,6 @@
 use crate::model::events::{Event, EventAtom, EventSubType};
 use crate::model::events::{GainPortion, GainTerm};
-use crate::model::kraken_amount::UsdAmount;
+use crate::{basis::AssetName, model::kraken_amount::UsdAmount};
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
 
@@ -14,14 +14,15 @@ pub struct CapGainsWorksheet {
 
 #[derive(Debug)]
 struct CapGainsWorksheetRow {
-    event_date: DateTime<Utc>,       // Column A
-    internal_account: String,        // Column B
-    ledger_row_id: String,           // Column C (Debugging only. `txid` in `LedgerRow`)
-    event_subtype: EventSubType,     // Column D (Debugging only.)
-    event_name: String,              // Column E (Debugging only.)
-    asset_out_exchange_rate: String, // Column F (Debugging only.)
-    asset_in_exchange_rate: String,  // Column G (Debugging only.)
-    proceeds: UsdAmount,             // Column I
+    event_date: DateTime<Utc>,         // Column A
+    internal_account: String,          // Column B
+    ledger_row_id: String,             // Column C (Debugging only. `txid` in `LedgerRow`)
+    event_subtype: EventSubType,       // Column D (Debugging only.)
+    event_name: String,                // Column E (Debugging only.)
+    asset_out_exchange_rate: String,   // Column F (Debugging only.)
+    asset_in_exchange_rate: String,    // Column G (Debugging only.)
+    fee_asset_name: Option<AssetName>, // Column H (Debugging only.)
+    proceeds: UsdAmount,               // Column I
     event_details: Vec<EventAtom>,
 }
 
@@ -123,23 +124,8 @@ impl Display for CapGainsWorksheetRow {
         )?;
         // Columns H-I
         let fee_asset_name = self
-            .event_details
-            .iter()
-            .find(|atom| {
-                matches!(
-                    atom,
-                    EventAtom::Fee { .. } | EventAtom::InvestmentFee { .. }
-                )
-            })
-            .map(|atom| {
-                match atom {
-                    EventAtom::Fee { asset_amount, .. }
-                    | EventAtom::InvestmentFee { asset_amount, .. } => asset_amount,
-                    _ => unreachable!(),
-                }
-                .get_asset()
-                .to_string()
-            })
+            .fee_asset_name
+            .map(|name| name.to_string())
             .unwrap_or_default();
         write!(
             f,
@@ -660,6 +646,7 @@ impl CapGainsWorksheetRow {
             event_name: event.event_info.event_name,
             asset_out_exchange_rate,
             asset_in_exchange_rate,
+            fee_asset_name: event.fee_asset_name,
             proceeds: event.event_info.proceeds,
             event_details: event.event_details,
         }
