@@ -72,3 +72,7 @@ ignored = [
 
 [lints.rust]
 unsafe_code = "forbid"
+
+[profile.release]
+debug = true
+
