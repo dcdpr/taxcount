@@ -394,9 +394,6 @@ impl Event {
 
     /// Record the asset of a fee paid by this event.
     ///
-    /// Called both when a fee atom is added and when a fee is paid without an atom (a
-    /// fiat-denominated buy capitalizes its fee into the acquired split's basis).
-    ///
     /// An event pays all of its fees in a single asset; a second, different asset is a bug.
     pub(crate) fn set_fee_asset_name(&mut self, name: AssetName) {
         if let Some(known) = self.fee_asset_name {
