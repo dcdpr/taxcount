@@ -33,7 +33,10 @@ pub enum LedgerParsed {
         row_out: LedgerRowTypical,
         row_in: LedgerRowTypical,
     },
-    MarginPositionOpen(LedgerRowTypical),
+    MarginPositionOpen {
+        row_open: LedgerRowTypical,
+        row_fee: Option<LedgerRowTypical>, // Some when the fee is paid in a second asset.
+    },
     MarginPositionRollover(LedgerRowTypical),
     MarginPositionClose {
         row_proceeds: LedgerRowTypical,
@@ -154,7 +157,13 @@ impl LedgerParsed {
                 }
             }
 
-            Self::MarginPositionOpen(lrt) => format!("Open: {}", lrt.fee.get_asset()),
+            Self::MarginPositionOpen { row_open, row_fee } => {
+                let mut name = format!("Open: {}", row_open.fee.get_asset());
+                if let Some(row_fee) = row_fee {
+                    name.push_str(&format!(" and {}", row_fee.fee.get_asset()));
+                }
+                name
+            }
             Self::MarginPositionRollover(lrt) => format!("Rollover: {}", lrt.fee.get_asset()),
             Self::Withdrawal(lrt) => format!("Withdrawal: {}", lrt.amount.get_asset()),
             Self::Deposit(lrt) => format!("Deposit: {}", lrt.fee.get_asset()),
@@ -165,7 +174,7 @@ impl LedgerParsed {
         match self {
             Self::Trade { row_out: lrt, .. }
             | Self::MarginPositionSettle { row_out: lrt, .. }
-            | Self::MarginPositionOpen(lrt)
+            | Self::MarginPositionOpen { row_open: lrt, .. }
             | Self::MarginPositionRollover(lrt)
             | Self::Withdrawal(lrt)
             | Self::MarginPositionClose {
@@ -222,60 +231,95 @@ impl FIFO<LedgerRow> {
         Ok(LedgerParsed::Trade { row_out, row_in })
     }
 
+    // A two-row "margin" whose trade lacks "closing" in the `misc` column is an open. Older parsers
+    // read such a pair as a close and acquired the first row's amount into the pool. A non-zero
+    // non-USD amount now panics in `handle_margin_open`, so only a non-zero USD amount (collateral)
+    // is worth warning about: the old parser acquired it, this parser does not. And the USD pool is
+    // short of the ledger balance.
+    fn check_misclassified_margin_open(
+        &self,
+        row_first: &LedgerRowTypical,
+        trades: &HashMap<String, &TradeRow>,
+    ) -> bool {
+        let is_pair = matches!(
+            self.peek_front(),
+            Some(LedgerRow::Margin(lrt)) if lrt.refid == row_first.refid
+        );
+
+        let is_closing = trades
+            .get(&row_first.refid)
+            .is_some_and(|trade| trade.misc.iter().any(|s| s == "closing"));
+
+        let usd_collateral =
+            matches!(row_first.amount, KrakenAmount::Usd(_)) && !row_first.amount.is_zero();
+
+        let misclassified = is_pair && !is_closing && usd_collateral;
+
+        if misclassified {
+            println!(
+                "  ⚠️ Two-row margin open txid=`{}` has non-zero USD amount {} (collateral). \
+                 Older parsers misclassified this as a close and added the amount to the USD pool; \
+                 the open handler does not, so the pool is short of the ledger balance.",
+                row_first.txid, row_first.amount,
+            );
+        }
+
+        misclassified
+    }
+
     fn snarf_matching_margin_row(
         &mut self,
         row_proceeds: LedgerRowTypical,
         trades: &HashMap<String, &TradeRow>,
     ) -> Result<LedgerParsed, ParseLedgerError> {
-        let check_degenerate = if let Some(LedgerRow::Margin(lrt)) = self.peek_front() {
-            row_proceeds.refid != lrt.refid
-        } else {
-            // If this is the last ledger line, _or_ not a "margin" row, then it needs to be checked
-            // for degenerate close.
-            true
+        self.check_misclassified_margin_open(&row_proceeds, trades);
+
+        // Lookahead one row for a matching refid to determine if this is a one- or two-row margin.
+        let row_fee = match self.pop_front_if(
+            |row| matches!(row, LedgerRow::Margin(lrt) if row_proceeds.refid == lrt.refid),
+        ) {
+            Some(LedgerRow::Margin(lrt)) => Some(lrt),
+            _ => None,
         };
 
-        if check_degenerate {
-            if let Some(trade) = trades.get(&row_proceeds.refid) {
-                if trade.misc.iter().any(|s| s == "closing") {
-                    let fee_asset = kraken_asset_from_pair(&trade.pair);
-                    let zero = KrakenAmount::zero(fee_asset).unwrap();
-                    let row_fee = MarginFeeRow {
+        let trade = trades
+            .get(&row_proceeds.refid)
+            .ok_or(ParseLedgerError::MissingTrade)?;
+
+        // "closing" in the trade's `misc` column distinguishes a close from an open.
+        if trade.misc.iter().any(|s| s == "closing") {
+            assert!(
+                trade.ledgers.len() <= 2,
+                "Spot positions on margin with multiple collateral currencies are unsupported",
+            );
+
+            // The close may elide its "margin fee" row.
+            let row_fee = match row_fee {
+                Some(row_fee) => MarginFeeRow::from(row_fee),
+                None => {
+                    let zero = KrakenAmount::zero(kraken_asset_from_pair(&trade.pair)).unwrap();
+                    MarginFeeRow {
                         txid: row_proceeds.txid.clone(),
                         refid: row_proceeds.refid.clone(),
                         time: row_proceeds.time,
                         amount: zero,
                         fee: zero,
                         balance: None,
-                    };
-
-                    // Handle elided "margin fee" rows for closing trades.
-                    return Ok(LedgerParsed::MarginPositionClose {
-                        row_proceeds,
-                        row_fee,
-                        exchange_rate: trade.price,
-                    });
+                    }
                 }
-            }
+            };
 
-            // If the next ledger line is a different ref-id, then this is an open
-            return Ok(LedgerParsed::MarginPositionOpen(row_proceeds));
+            return Ok(LedgerParsed::MarginPositionClose {
+                row_proceeds,
+                row_fee,
+                exchange_rate: trade.price,
+            });
         }
 
-        let row_fee = match self.pop_front().unwrap() {
-            LedgerRow::Margin(lrt) => lrt,
-            _ => unreachable!(),
-        };
-
-        let exchange_rate = trades
-            .get(&row_proceeds.refid)
-            .map(|trade| trade.price)
-            .ok_or(ParseLedgerError::MissingTrade)?;
-
-        Ok(LedgerParsed::MarginPositionClose {
-            row_proceeds,
-            row_fee: row_fee.into(),
-            exchange_rate,
+        // On margin open, the second row may pay the remainder of the fee.
+        Ok(LedgerParsed::MarginPositionOpen {
+            row_open: row_proceeds,
+            row_fee,
         })
     }
 
@@ -314,8 +358,9 @@ fn kraken_asset_from_pair(pair: &str) -> &str {
 mod tests {
     use super::*;
     use crate::imports::kraken::{read_ledgers, read_trades};
-    use crate::model::constants;
-    use crate::model::stats::Stats;
+    use crate::model::ledgers::rows::{BookSide, TradeType};
+    use crate::model::{constants, stats::Stats};
+    use rust_decimal::Decimal;
     use tracing_test::traced_test;
 
     #[test]
@@ -325,7 +370,8 @@ mod tests {
 
         use KrakenAmount::*;
 
-        // Check the ledger for MarginClosePosition[Long|Short] that produces crypto assets. (Should not happen.)
+        // Check the ledger for MarginClosePosition[Long|Short] that produces crypto assets.
+        // (Should not happen.)
         let mut stats = Stats::default();
 
         let trades = read_trades(&mut stats, constants::DEFAULT_PATH_INPUT_TRADES).unwrap();
@@ -345,5 +391,93 @@ mod tests {
                 assert!(row_fee.amount.is_zero());
             }
         }
+    }
+
+    fn margin_row(txid: &str, refid: &str, asset: &str, amount: Decimal) -> LedgerRowTypical {
+        let amount = KrakenAmount::try_from_decimal(asset, amount).unwrap();
+        let zero = KrakenAmount::zero(asset).unwrap();
+
+        LedgerRowTypical {
+            txid: txid.to_string(),
+            refid: refid.to_string(),
+            time: Utc::now(),
+            amount,
+            fee: zero,
+            balance: zero,
+        }
+    }
+
+    fn margin_trade(misc: &str) -> TradeRow {
+        let zero_usd = KrakenAmount::zero("ZUSD").unwrap();
+
+        TradeRow {
+            txid: String::new(),
+            ordertxid: String::new(),
+            pair: "XXBTZUSD".to_string(),
+            time: Utc::now(),
+            tr_type: TradeType::Sell,
+            ordertype: BookSide::Market,
+            price: zero_usd,
+            cost: zero_usd,
+            fee: zero_usd,
+            vol: KrakenAmount::zero("XXBT").unwrap(),
+            margin: zero_usd,
+            misc: vec![misc.to_string()],
+            ledgers: vec![],
+        }
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_misclassified_margin_open_warns() {
+        let txid = "000000-11111-222222";
+        let refid = "111111-22222-333333";
+
+        // A two-row open with a non-zero USD amount (collateral). (Should not happen.)
+        let trade = margin_trade("initiated");
+        let trades = HashMap::from([(refid.to_string(), &trade)]);
+        let first_row = margin_row(txid, refid, "ZUSD", Decimal::new(2575, 2));
+        let second_row = LedgerRow::Margin(margin_row(txid, refid, "XXBT", Decimal::ZERO));
+        let fifo = FIFO::from_iter([second_row]);
+        assert!(fifo.check_misclassified_margin_open(&first_row, &trades));
+    }
+
+    #[test]
+    #[traced_test]
+    fn test_misclassified_margin_open_silent() {
+        let txid = "000000-11111-222222";
+        let refid = "111111-22222-333333";
+
+        // A two-row open with a zero first-row amount.
+        let trade = margin_trade("initiated");
+        let trades = HashMap::from([(refid.to_string(), &trade)]);
+        let first_row = margin_row(txid, refid, "ZUSD", Decimal::ZERO);
+        let second_row = LedgerRow::Margin(margin_row(txid, refid, "XXBT", Decimal::ZERO));
+        let fifo = FIFO::from_iter([second_row]);
+        assert!(!fifo.check_misclassified_margin_open(&first_row, &trades));
+
+        // A two-row open with a non-zero non-USD first-row amount. (Panics in `handle_margin_open`
+        // instead of warning.)
+        let trade = margin_trade("initiated");
+        let trades = HashMap::from([(refid.to_string(), &trade)]);
+        let first_row = margin_row(txid, refid, "ZEUR", Decimal::new(2575, 2));
+        let second_row = LedgerRow::Margin(margin_row(txid, refid, "XXBT", Decimal::ZERO));
+        let fifo = FIFO::from_iter([second_row]);
+        assert!(!fifo.check_misclassified_margin_open(&first_row, &trades));
+
+        // A two-row close with a non-zero first-row amount.
+        let trade = margin_trade("closing");
+        let trades = HashMap::from([(refid.to_string(), &trade)]);
+        let first_row = margin_row(txid, refid, "ZUSD", Decimal::new(2575, 2));
+        let second_row = LedgerRow::Margin(margin_row(txid, refid, "XXBT", Decimal::ZERO));
+        let fifo = FIFO::from_iter([second_row]);
+        assert!(!fifo.check_misclassified_margin_open(&first_row, &trades));
+
+        // A one-row open with a non-zero first-row amount.
+        let trade = margin_trade("initiated");
+        let trades = HashMap::from([(refid.to_string(), &trade)]);
+        let first_row = margin_row(txid, refid, "ZUSD", Decimal::new(2575, 2));
+        let fifo = FIFO::new();
+        assert!(!fifo.check_misclassified_margin_open(&first_row, &trades));
     }
 }

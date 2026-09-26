@@ -41,6 +41,9 @@ impl<A> FIFO<A> {
     pub fn pop_front(&mut self) -> Option<A> {
         self.deq.pop_front()
     }
+    pub fn pop_front_if(&mut self, predicate: impl FnOnce(&mut A) -> bool) -> Option<A> {
+        self.deq.pop_front_if(predicate)
+    }
     pub fn push_front(&mut self, e: A) {
         // a LIFO thing, used for splits
         //   (intended sequence: pop; split -> (a,b); consume a; push_front b;)

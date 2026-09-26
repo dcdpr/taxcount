@@ -815,7 +815,7 @@ impl State {
             LedgerParsed::Trade { .. } | LedgerParsed::MarginPositionSettle { .. } => {
                 self.handle_trade(worksheet_name, Rc::new(lp), args)
             }
-            LedgerParsed::MarginPositionOpen(_) => {
+            LedgerParsed::MarginPositionOpen { .. } => {
                 self.handle_margin_open(worksheet_name, Rc::new(lp), args)
             }
             LedgerParsed::MarginPositionRollover(_) => {
@@ -951,21 +951,32 @@ impl State {
         lp: Rc<LedgerParsed>,
         args: &mut Args,
     ) -> Vec<Result<Event, PriceError>> {
-        if let LedgerParsed::MarginPositionOpen(lrt) = &*lp {
-            debug!("handle_margin_open() lrt: {lrt:?}");
+        if let LedgerParsed::MarginPositionOpen { row_open, row_fee } = &*lp {
+            debug!("handle_margin_open() row_open: {row_open:?}");
 
-            assert!(lrt.amount.is_zero() || matches!(lrt.amount, KrakenAmount::Usd(_)));
+            assert!(row_open.amount.is_zero() || matches!(row_open.amount, KrakenAmount::Usd(_)));
 
             let mut event = Event::from_ledger_parsed(
                 worksheet_name.clone(),
                 lp.clone(),
-                lrt.time,
-                lrt.refid.clone(),
-                lrt.txid.clone(),
+                row_open.time,
+                row_open.refid.clone(),
+                row_open.txid.clone(),
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errors = self.release_poolasset(&mut event, args, lrt.amount, (-lrt.fee, None));
+            let asset_fee = (-row_open.fee, None);
+            let mut errors = self.release_poolasset(&mut event, args, row_open.amount, asset_fee);
+
+            // The remainder of the fee, paid in a second asset on its own row.
+            if let Some(row_fee) = row_fee {
+                assert!(row_fee.amount.is_zero());
+                assert!(row_fee.fee.is_zero() || row_fee.fee.is_positive());
+
+                // No defined rate covers the fee asset: the market rate is used.
+                let asset_fee = (-row_fee.fee, None);
+                errors.extend(self.release_poolasset(&mut event, args, row_fee.amount, asset_fee));
+            }
 
             if errors.is_empty() {
                 vec![Ok(event)]

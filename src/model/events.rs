@@ -808,7 +808,7 @@ impl<'a> From<&'a LedgerParsed> for EventSubType {
             LedgerParsed::Trade { .. } => Self::Trade,
             LedgerParsed::MarginPositionClose { .. } => Self::MarginClose,
             LedgerParsed::MarginPositionSettle { .. } => Self::MarginSettle,
-            LedgerParsed::MarginPositionOpen(_) => Self::MarginOpen,
+            LedgerParsed::MarginPositionOpen { .. } => Self::MarginOpen,
             LedgerParsed::MarginPositionRollover(_) => Self::MarginRollover,
             LedgerParsed::Withdrawal(_) => Self::Withdrawal,
             LedgerParsed::Deposit(_) => Self::Deposit,

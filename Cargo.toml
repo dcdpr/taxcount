@@ -6,7 +6,7 @@ authors = ["rgrant <taxcount@contract.design>", "Jay Oster <jay@blipjoy.com>"]
 edition = "2021"
 publish = false
 license = "MPL-2.0"
-rust-version = "1.82.0"
+rust-version = "1.93.0"
 
 [dependencies]
 base64 = "0.22"

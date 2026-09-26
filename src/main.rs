@@ -711,9 +711,24 @@ fn assert_balance(
             });
         }
 
-        LedgerParsed::MarginPositionOpen(lrt)
-        | LedgerParsed::MarginPositionRollover(lrt)
-        | LedgerParsed::Withdrawal(lrt) => {
+        LedgerParsed::MarginPositionOpen { row_open, row_fee } => {
+            balances.accumulate(row_open.amount, row_open.fee);
+            balances.eq(row_open.balance, |asset: AssetName| {
+                errors
+                    .entry(asset)
+                    .or_insert_with(|| Error::LedgerBalance(row_open.txid.clone(), asset));
+            });
+            if let Some(row_fee) = row_fee {
+                balances.accumulate(row_fee.amount, row_fee.fee);
+                balances.eq(row_fee.balance, |asset: AssetName| {
+                    errors
+                        .entry(asset)
+                        .or_insert_with(|| Error::LedgerBalance(row_fee.txid.clone(), asset));
+                });
+            }
+        }
+
+        LedgerParsed::MarginPositionRollover(lrt) | LedgerParsed::Withdrawal(lrt) => {
             balances.accumulate(lrt.amount, lrt.fee);
             balances.eq(lrt.balance, |asset: AssetName| {
                 errors
