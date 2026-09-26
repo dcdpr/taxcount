@@ -819,6 +819,15 @@ impl ExchangeOp {
         );
         gen.position_index += 1;
 
+        // TODO: The trade price is set to zero at open.
+        let price = KrakenAmount::zero("ZUSD").unwrap();
+
+        // Insert trades row.
+        gen.trades_rows.insert(
+            trade_id.clone(),
+            TradeState::new(pair.as_kraken(), datetime, price, ""),
+        );
+
         // Generate ledger row.
         let row = LedgerRowTypical {
             txid: generate_ledger_id(u)?,
@@ -831,8 +840,11 @@ impl ExchangeOp {
         gen.ledger_rows.push(LedgerRow::Margin(row.clone()));
 
         // Insert expected row.
-        gen.expected_rows
-            .push(LedgerParsed::MarginPositionOpen(row));
+        gen.expected_rows.push(LedgerParsed::MarginPositionOpen {
+            row_open: row,
+            // TODO: Support two-row margin opens.
+            row_fee: None,
+        });
 
         Ok(())
     }
