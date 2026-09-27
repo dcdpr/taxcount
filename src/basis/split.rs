@@ -1,7 +1,5 @@
 use super::lookup::{BasisLookup, BasisLookupExt};
-use super::ToNonSplittable as _;
-use super::{Asset, AssetName, BasisLifecycle, PoolAsset, PoolAssetSplit};
-use crate::errors::ExchangeRateError;
+use super::{Asset, AssetName, BasisLifecycle, PoolAsset, PoolAssetSplit, ToNonSplittable as _};
 use crate::imports::wallet::{LoanRole, Tx, TxType};
 use crate::model::blockchain::{BlockchainExt, TimeOrderedBlockchain};
 use crate::model::checkpoint::{Pending, PendingAccountTx, PendingTxInfo, PendingUtxo, State};
@@ -11,7 +9,7 @@ use crate::model::kraken_amount::{FiatAmount, KrakenAmount, UsdAmount};
 use crate::model::ledgers::parsed::{LedgerMarginClose, LedgerParsed, LedgerTwoRowTrade};
 use crate::model::ledgers::rows::{BasisRow, LedgerRowDeposit, TradeRow};
 use crate::model::pairs::{get_asset_pair, Trade};
-use crate::util::fifo::FIFO;
+use crate::{errors::ExchangeRateError, util::fifo::FIFO};
 use chrono::{DateTime, Utc};
 use error_iter::ErrorIter as _;
 use std::collections::{HashMap, HashSet};
@@ -915,8 +913,6 @@ impl State {
                         {
                             return vec![Err(err)];
                         }
-                        // No fee atom is created, but the worksheet still reports the fee's asset.
-                        event.set_fee_asset_name(row_out.fee.get_asset());
                     }
 
                     KrakenAmount::Usd(FiatAmount::default())
@@ -1874,13 +1870,11 @@ mod tests {
     use crate::model::checkpoint::{Balances, CheckpointHeader, UtxoBalances};
     use crate::model::events::{EventAtom, EventSubType, GainPortion, GainTerm};
     use crate::model::exchange_rate::{ExchangeRateMap, ExchangeRates};
-    use crate::model::kraken_amount::PoolUsdAmount;
-    use crate::model::ledgers::rows::{BasisRow, LedgerRowTypical};
     use crate::model::{blockchain::Utxo, CapGainsWorksheet, Stats, Sums};
+    use crate::model::{kraken_amount::PoolUsdAmount, ledgers::rows::LedgerRowTypical};
     use chrono::NaiveDateTime;
     use gitver::GitverHashes;
-    use std::collections::{BTreeSet, HashMap};
-    use std::rc::Rc;
+    use std::collections::BTreeSet;
     use tracing_test::traced_test;
 
     // use crate::model::{KrakenAmount, Stats, Sums, UsdAmount};
