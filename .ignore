@@ -1,0 +1,13 @@
+**/__pycache__/
+**/target/**
+.agentic-shepherd/code-map.md
+.agentic-shepherd/log/
+.git/
+.jp/conversations/
+.jp/local-conversations/
+
+# un-ignore desired trees
+!**/target/doc/
+!**/target/doc/**
+!**/target/log/
+!**/target/log/**
