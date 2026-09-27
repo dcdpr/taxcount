@@ -175,7 +175,8 @@ impl From<UsdtAmount> for AssetName {
 }
 
 impl AssetName {
-    pub(crate) fn as_kraken(&self) -> &str {
+    /// Get the internal asset name used by Kraken, e.g. `XXBT` for [`Self::Btc`].
+    pub(crate) fn as_kraken(self) -> &'static str {
         match self {
             Self::Usd => "ZUSD",
             Self::Btc => "XXBT",
@@ -184,6 +185,21 @@ impl AssetName {
             Self::Eth => "XETH",
             Self::EthW => "ETHW",
             Self::Jpy => "ZJPY",
+            Self::Usdc => "USDC",
+            Self::Usdt => "USDT",
+        }
+    }
+
+    /// Get the plain asset name, e.g. `"BTC"` for [`Self::Btc`].
+    pub(crate) fn as_plain(self) -> &'static str {
+        match self {
+            Self::Usd => "USD",
+            Self::Btc => "BTC",
+            Self::Chf => "CHF",
+            Self::Eur => "EUR",
+            Self::Eth => "ETH",
+            Self::EthW => "ETHW",
+            Self::Jpy => "JPY",
             Self::Usdc => "USDC",
             Self::Usdt => "USDT",
         }

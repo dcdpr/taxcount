@@ -1,8 +1,7 @@
 use super::*;
-use crate::model::kraken_amount::{
-    BitcoinAmount, EthWAmount, EtherAmount, FiatAmount, UsdcAmount, UsdtAmount,
-    KRAKEN_CRYPTO_INPUT_DIGITS, KRAKEN_FIAT_DIGITS, KRAKEN_STABLECOIN_DIGITS,
-};
+use crate::model::kraken_amount::{BitcoinAmount, EthWAmount, EtherAmount, FiatAmount};
+use crate::model::kraken_amount::{UsdcAmount, UsdtAmount, KRAKEN_STABLECOIN_DIGITS};
+use crate::model::kraken_amount::{KRAKEN_CRYPTO_INPUT_DIGITS, KRAKEN_FIAT_DIGITS};
 use crate::model::ledgers::rows::{BookSide, TradeType};
 use crate::model::ledgers::rows::{LedgerRowDepositRequest, LedgerRowWithdrawalRequest};
 use crate::model::pairs::{get_asset_pair, Pair};
@@ -149,7 +148,9 @@ impl ExchangeGen {
 
             match op {
                 ExchangeOp::Trade => ExchangeOp::trade(u, &mut gen, exchange_rates, datetime)?,
-                ExchangeOp::MarginOpen => ExchangeOp::margin_open(u, &mut gen, datetime)?,
+                ExchangeOp::MarginOpen => {
+                    ExchangeOp::margin_open(u, &mut gen, exchange_rates, datetime)?
+                }
                 ExchangeOp::MarginOp => {
                     ExchangeOp::margin_op(u, &mut gen, exchange_rates, datetime)?
                 }
@@ -481,6 +482,14 @@ impl BalancesMutView<'_> {
     }
 }
 
+/// Bundle of the `ExchangeGen` fields that closing a margin position writes to.
+struct CloseSink<'a> {
+    balances: &'a mut Balances,
+    ledger_rows: &'a mut Vec<LedgerRow>,
+    trades_rows: &'a mut HashMap<String, TradeState>,
+    expected_rows: &'a mut Vec<LedgerParsed>,
+}
+
 #[derive(Debug)]
 struct MarginState {
     trade_id: String,
@@ -519,18 +528,18 @@ impl MarginState {
         exchange_rates: &ExchangeRates,
         datetime: DateTime<Utc>,
     ) -> KrakenAmount {
-        // Profit or loss is the difference between the quote amount at open time
-        // and close time.
+        // Profit or loss is the difference between the position value in the quote asset at open
+        // time and close time.
         let position_amount_at_open = KrakenAmount::convert(
-            self.borrowed_amount, // Quote asset, e.g. USD
-            self.position_asset,  // Base asset, e.g. BTC
+            self.borrowed_amount, // Base asset, e.g. BTC
+            self.position_asset,  // Quote asset, e.g. USD
             exchange_rates,
             self.open_time,
         )
         .unwrap();
         let position_amount_at_close = KrakenAmount::convert(
-            self.borrowed_amount, // Quote asset, e.g. USD
-            self.position_asset,  // Base asset, e.g. BTC
+            self.borrowed_amount, // Base asset, e.g. BTC
+            self.position_asset,  // Quote asset, e.g. USD
             exchange_rates,
             datetime,
         )
@@ -544,47 +553,44 @@ impl MarginState {
 struct TradeState {
     pair: &'static str,
     datetime: DateTime<Utc>,
-    price: KrakenAmount,
+    order_id: String,
+    price: KrakenAmount,  // The position value, denominated in the quote asset.
+    vol: KrakenAmount,    // Denominated in the base asset.
+    fee: KrakenAmount,    // Denominated in the quote asset.
+    margin: KrakenAmount, // Margin posted as collateral, denominated in the quote asset.
     misc: &'static str,
-}
-
-impl TradeState {
-    fn new(
-        pair: &'static str,
-        datetime: DateTime<Utc>,
-        price: KrakenAmount,
-        misc: &'static str,
-    ) -> Self {
-        Self {
-            pair,
-            datetime,
-            price,
-            misc,
-        }
-    }
+    ledgers: Vec<String>,
 }
 
 impl From<(String, TradeState)> for TradeRow {
     fn from((txid, trade_state): (String, TradeState)) -> Self {
-        let zero = KrakenAmount::zero(trade_state.price.get_asset().as_kraken()).unwrap();
+        // Margin opens are buys; margin closes are sells.
+        let tr_type = if trade_state.misc == "closing" {
+            TradeType::Sell
+        } else {
+            TradeType::Buy
+        };
+
         Self {
             txid,
-            ordertxid: "TODO-OrderId".to_string(),
+            ordertxid: trade_state.order_id,
             pair: trade_state.pair.to_string(),
             time: trade_state.datetime,
-            tr_type: TradeType::Buy, // TODO: `TradeState` needs the trade pair.
-            ordertype: BookSide::Limit, // TODO: `TradeState` needs the order type.
+            tr_type,
+            ordertype: BookSide::Limit, // Margin orders are limit orders.
             price: trade_state.price,
-            cost: zero,   // TODO: `TradeState` needs more info.
-            fee: zero,    // TODO: `TradeState` needs more info.
-            vol: zero,    // TODO: `TradeState` needs more info.
-            margin: zero, // TODO: `TradeState` needs more info.
+            // The simulation's `price` is the value of `vol` in the quote asset, so the `cost`
+            // equals the `price`.
+            cost: trade_state.price,
+            fee: trade_state.fee,
+            vol: trade_state.vol,
+            margin: trade_state.margin,
             misc: trade_state
                 .misc
                 .split(",")
                 .map(|item| item.to_string())
                 .collect(),
-            ledgers: Vec::new(), // TODO: `TradeState` needs to record associated Ledger IDs.
+            ledgers: trade_state.ledgers,
         }
     }
 }
@@ -731,7 +737,7 @@ impl ExchangeOp {
         }
 
         match SubOp::arbitrary(u, gen, exchange_rates, datetime)? {
-            SubOp::Close => Self::margin_close(u, gen, exchange_rates)?,
+            SubOp::Close => Self::margin_close(u, gen, exchange_rates, datetime)?,
             SubOp::Settle(margin_index) => {
                 Self::margin_settle(u, gen, margin_index, exchange_rates, datetime)?
             }
@@ -744,6 +750,7 @@ impl ExchangeOp {
     fn margin_open(
         u: &mut Unstructured<'_>,
         gen: &mut ExchangeGen,
+        exchange_rates: &ExchangeRates,
         datetime: DateTime<Utc>,
     ) -> ArbResult<()> {
         let result = generate_margin_pair(u, gen);
@@ -758,6 +765,7 @@ impl ExchangeOp {
         // Use 3-50% of available balance as collateral.
         let percent = decimal_percent(u, 3..=50)?;
         let collateral_amount = gen.choose_funding(u, percent)?;
+        let collateral_asset = collateral_amount.get_asset();
 
         gen.reserve_funds(collateral_amount);
 
@@ -769,7 +777,7 @@ impl ExchangeOp {
         // In the case that the borrowed asset and collateral asset are identical, e.g. leveraging
         // BTC with BTC, the closing fee will always be 0.01% of up to half of the BTC balance.
         // Which will never trigger the negative assertion.
-        if borrowed_asset != collateral_amount.get_asset() {
+        if borrowed_asset != collateral_asset {
             // Multiply the balance by 200, which is proportional to the 0.01% opening fee AND
             // 0.1% closing fee.
             let balance_for_borrowed_asset =
@@ -782,36 +790,53 @@ impl ExchangeOp {
             borrowed_amount = borrowed_amount.min(scaled_balance);
         }
 
-        // Decide to take fees out of either the borrowed asset or collateral asset.
-        let fee_from_borrowed =
-            gen.get_available_balance(borrowed_asset).is_positive() && u.ratio(1, 2)?;
-
-        let (fee, zero) = if fee_from_borrowed {
-            // Take the 0.01% opening fee out of the borrowed amount.
-            let fee = fixed_fee(borrowed_amount, FEE_PERCENT);
-            let zero = KrakenAmount::zero(borrowed_asset.as_kraken()).unwrap();
-
-            (fee, zero)
-        } else {
-            // Take the 0.01% opening fee out of the collateral amount.
-            let fee = fixed_fee(collateral_amount, FEE_PERCENT);
-            let zero = KrakenAmount::zero(collateral_amount.get_asset().as_kraken()).unwrap();
-
-            (fee, zero)
-        };
-        gen.balances.accumulate(zero, fee);
+        // The base (borrowed) asset fee is always charged at open.
+        let fee_base = fixed_fee(borrowed_amount, FEE_PERCENT);
+        let zero_base = KrakenAmount::zero(borrowed_asset.as_kraken()).unwrap();
+        gen.balances.accumulate(zero_base, fee_base);
 
         // Reserve the closing fee.
-        gen.reserve_funds(fee);
+        gen.reserve_funds(fee_base);
+
+        // With 50% probability, a collateral-side fee is also charged at open.
+        let fee_collateral = if u.ratio(1, 2)? {
+            fixed_fee(collateral_amount, FEE_PERCENT)
+        } else {
+            KrakenAmount::zero(collateral_asset.as_kraken()).unwrap()
+        };
+        let zero_collateral = KrakenAmount::zero(collateral_asset.as_kraken()).unwrap();
+        if fee_collateral.is_positive() {
+            gen.balances.accumulate(zero_collateral, fee_collateral);
+        }
 
         // Open margin position.
         let trade_id = generate_trade_id(u)?;
+        let order_id = generate_order_id(u)?;
+
+        // The trade price is the position value, denominated in the quote asset.
+        let price =
+            KrakenAmount::convert(borrowed_amount, position_asset, exchange_rates, datetime)
+                .unwrap();
+        let fee_total = {
+            let base = fee_base
+                .convert(position_asset, exchange_rates, datetime)
+                .unwrap();
+            let collateral = fee_collateral
+                .convert(position_asset, exchange_rates, datetime)
+                .unwrap();
+
+            base + collateral
+        };
+        let margin_amount = collateral_amount
+            .convert(position_asset, exchange_rates, datetime)
+            .unwrap();
+
         gen.open_positions.insert(
             gen.position_index,
             MarginState::new(
                 trade_id.clone(),
                 borrowed_amount,
-                fee,
+                fee_base,
                 collateral_amount,
                 position_asset,
                 datetime,
@@ -819,32 +844,84 @@ impl ExchangeOp {
         );
         gen.position_index += 1;
 
-        // TODO: The trade price is set to zero at open.
-        let price = KrakenAmount::zero("ZUSD").unwrap();
+        // A two-row margin open charges the collateral-side fee on its own ledger row, in addition
+        // to the base asset fee row.
+        let row_open_txid = generate_ledger_id(u)?;
+        let mut ledgers = vec![row_open_txid.clone()];
+        let row_fee_txid = if fee_collateral.is_positive() && collateral_asset != borrowed_asset {
+            let txid = generate_ledger_id(u)?;
+            ledgers.push(txid.clone());
+
+            Some(txid)
+        } else {
+            None
+        };
 
         // Insert trades row.
-        gen.trades_rows.insert(
-            trade_id.clone(),
-            TradeState::new(pair.as_kraken(), datetime, price, ""),
-        );
-
-        // Generate ledger row.
-        let row = LedgerRowTypical {
-            txid: generate_ledger_id(u)?,
-            refid: trade_id,
-            time: datetime,
-            amount: zero,
-            fee,
-            balance: gen.balances.get(zero.get_asset()),
+        let trade_state = TradeState {
+            pair: pair.as_kraken(),
+            datetime,
+            order_id,
+            price,
+            vol: borrowed_amount,
+            fee: fee_total,
+            margin: margin_amount,
+            misc: "",
+            ledgers,
         };
-        gen.ledger_rows.push(LedgerRow::Margin(row.clone()));
+        gen.trades_rows.insert(trade_id.clone(), trade_state);
+
+        let (row_open, row_fee) = match row_fee_txid {
+            Some(row_fee_txid) => {
+                let row_open = LedgerRowTypical {
+                    txid: row_open_txid,
+                    refid: trade_id.clone(),
+                    time: datetime,
+                    amount: zero_collateral,
+                    fee: fee_collateral,
+                    balance: gen.balances.get(collateral_asset),
+                };
+                let row_fee = LedgerRowTypical {
+                    txid: row_fee_txid,
+                    refid: trade_id,
+                    time: datetime,
+                    amount: zero_base,
+                    fee: fee_base,
+                    balance: gen.balances.get(borrowed_asset),
+                };
+
+                (row_open, Some(row_fee))
+            }
+            None => {
+                // For single-row opening, the collateral-side fee (if any) is folded into the base
+                // asset fee row.
+                let fee = if collateral_asset == borrowed_asset {
+                    fee_base + fee_collateral
+                } else {
+                    fee_base
+                };
+                let row_open = LedgerRowTypical {
+                    txid: row_open_txid,
+                    refid: trade_id,
+                    time: datetime,
+                    amount: zero_base,
+                    fee,
+                    balance: gen.balances.get(borrowed_asset),
+                };
+
+                (row_open, None)
+            }
+        };
+
+        // Insert ledger rows.
+        gen.ledger_rows.push(LedgerRow::Margin(row_open.clone()));
+        if let Some(row_fee) = &row_fee {
+            gen.ledger_rows.push(LedgerRow::Margin(row_fee.clone()));
+        }
 
         // Insert expected row.
-        gen.expected_rows.push(LedgerParsed::MarginPositionOpen {
-            row_open: row,
-            // TODO: Support two-row margin opens.
-            row_fee: None,
-        });
+        gen.expected_rows
+            .push(LedgerParsed::MarginPositionOpen { row_open, row_fee });
 
         Ok(())
     }
@@ -853,6 +930,7 @@ impl ExchangeOp {
         u: &mut Unstructured<'_>,
         gen: &mut ExchangeGen,
         exchange_rates: &ExchangeRates,
+        datetime: DateTime<Utc>,
     ) -> ArbResult<()> {
         let index = *u.choose_iter(gen.open_positions.keys())?;
         let margin = gen.open_positions.get(&index).unwrap();
@@ -861,22 +939,19 @@ impl ExchangeOp {
         let margin = gen.open_positions.get(&index).unwrap();
 
         let fee = margin.fee_for_borrowed_amount;
-        let balance = gen.get_available_balance(fee.get_asset());
         let zero = KrakenAmount::zero(fee.get_asset().as_kraken()).unwrap();
 
-        // Pay the closing fee out of the reserved balances.
+        // Release the reserved closing fee. The fee is paid by the closing ledger rows.
         gen.reserved_balances.accumulate(zero, fee);
 
         // Insert one or two ledger rows.
-        Self::insert_margin_close_rows(
-            u,
-            &mut gen.ledger_rows,
-            &mut gen.trades_rows,
-            &mut gen.expected_rows,
-            margin,
-            exchange_rates,
-            balance,
-        )?;
+        let sink = CloseSink {
+            balances: &mut gen.balances,
+            ledger_rows: &mut gen.ledger_rows,
+            trades_rows: &mut gen.trades_rows,
+            expected_rows: &mut gen.expected_rows,
+        };
+        Self::insert_margin_close_rows(u, sink, margin, exchange_rates, datetime)?;
 
         // Remove the open position.
         gen.open_positions.remove(&index);
@@ -992,22 +1067,21 @@ impl ExchangeOp {
                     if balance.to_decimal() < fee.to_decimal() * Decimal::from(2) {
                         // Apply margin call by closing the position.
 
-                        // Pay the closing fee out of the reserved balances.
+                        // Release the reserved closing fee. The fee is paid by the closing ledger
+                        // rows.
                         gen.reserved_balances.accumulate(zero, fee);
 
                         // Defer removal of open position.
                         closing.insert(*i);
 
                         // Insert one or two ledger rows.
-                        Self::insert_margin_close_rows(
-                            u,
-                            &mut gen.ledger_rows,
-                            &mut gen.trades_rows,
-                            &mut gen.expected_rows,
-                            margin,
-                            exchange_rates,
-                            balance,
-                        )?;
+                        let sink = CloseSink {
+                            balances: &mut gen.balances,
+                            ledger_rows: &mut gen.ledger_rows,
+                            trades_rows: &mut gen.trades_rows,
+                            expected_rows: &mut gen.expected_rows,
+                        };
+                        Self::insert_margin_close_rows(u, sink, margin, exchange_rates, datetime)?;
                     } else {
                         // Pay the rollover fee.
                         gen.balances.accumulate(zero, fee);
@@ -1020,6 +1094,11 @@ impl ExchangeOp {
                             fee,
                             balance: gen.balances.get(asset),
                         };
+
+                        // Record the rollover ledger ID on the open trade row.
+                        if let Some(trade_state) = gen.trades_rows.get_mut(&margin.trade_id) {
+                            trade_state.ledgers.push(row.txid.clone());
+                        }
 
                         // Insert expected row.
                         gen.expected_rows
@@ -1046,91 +1125,105 @@ impl ExchangeOp {
 
     fn insert_margin_close_rows(
         u: &mut Unstructured<'_>,
-        ledger_rows: &mut Vec<LedgerRow>,
-        trades_rows: &mut HashMap<String, TradeState>,
-        expected_rows: &mut Vec<LedgerParsed>,
+        sink: CloseSink<'_>,
         margin: &MarginState,
         exchange_rates: &ExchangeRates,
-        balance: KrakenAmount,
+        datetime: DateTime<Utc>,
     ) -> ArbResult<()> {
         let trade_id = generate_trade_id(u)?;
+        let order_id = generate_order_id(u)?;
 
-        // Generate closing event in trades.csv.
-        let pair = get_asset_pair(margin.position_asset, margin.borrowed_amount.get_asset())
-            .0
-            .as_kraken();
-        let price = KrakenAmount::convert(
-            margin.borrowed_amount, // Quote asset, e.g. USD
-            margin.position_asset,  // Base asset, e.g. BTC
+        // The closing proceeds are the position value, denominated in the quote (position)
+        // asset.
+        let proceeds = KrakenAmount::convert(
+            margin.borrowed_amount,
+            margin.position_asset,
             exchange_rates,
-            margin.open_time,
+            datetime,
         )
         .unwrap();
+        let proceeds_zero = KrakenAmount::zero(margin.position_asset.as_kraken()).unwrap();
 
-        trades_rows.insert(
-            trade_id.clone(),
-            TradeState::new(pair, margin.open_time, price, "closing"),
-        );
-
-        let borrowed_asset = margin.borrowed_amount.get_asset();
-        let borrowed_asset_zero = KrakenAmount::zero(borrowed_asset.as_kraken()).unwrap();
-
-        // Decide if the fee should be paid in the same asset as the proceeds.
+        // The closing fee is in the base (borrowed) asset.
         let fee = margin.fee_for_borrowed_amount;
-        let collapse_rows = borrowed_asset == fee.get_asset();
+        let fee_zero = KrakenAmount::zero(margin.borrowed_amount.get_asset().as_kraken()).unwrap();
+        let fee_total = fee
+            .convert(margin.position_asset, exchange_rates, datetime)
+            .unwrap();
+        let margin_amount = margin
+            .collateral_amount
+            .convert(margin.position_asset, exchange_rates, datetime)
+            .unwrap();
+
+        let row_proceeds_txid = generate_ledger_id(u)?;
+        let mut ledgers = vec![row_proceeds_txid.clone()];
 
         // Generate proceeds row for closing event.
+        sink.balances.accumulate(proceeds, proceeds_zero);
         let row_proceeds = LedgerRowTypical {
-            txid: generate_ledger_id(u)?,
-            refid: trade_id,
-            time: margin.last_update_time,
-            // TODO: This always "awards" the trader with the entire borrowed amount,
-            // and does not accumulate into balances.
-            amount: margin.borrowed_amount,
-            fee: if collapse_rows {
-                fee
-            } else {
-                borrowed_asset_zero
-            },
-            balance, // TODO: balance is wrong here.
+            txid: row_proceeds_txid.clone(),
+            refid: trade_id.clone(),
+            time: datetime,
+            amount: proceeds,
+            fee: proceeds_zero,
+            balance: sink.balances.get(margin.position_asset),
         };
-        ledger_rows.push(LedgerRow::Margin(row_proceeds.clone()));
+        sink.ledger_rows
+            .push(LedgerRow::Margin(row_proceeds.clone()));
 
-        let fee_asset = kraken_asset_from_pair(pair);
-        let fee_asset_zero = KrakenAmount::zero(fee_asset).unwrap();
+        // The close may elide its "margin fee" row, which is in the base (borrowed) asset.
+        let row_fee = if fee.is_positive() {
+            // For two-row closing, the fee is non-zero and is added to the ledger.
+            let row_fee_txid = generate_ledger_id(u)?;
+            ledgers.push(row_fee_txid.clone());
 
-        // Decide to generate the margin close as either one or two rows.
-        let row_fee = if collapse_rows {
+            sink.balances.accumulate(fee_zero, fee);
+            let row_fee = MarginFeeRow {
+                txid: row_fee_txid,
+                refid: row_proceeds.refid.clone(),
+                time: datetime,
+                amount: fee_zero,
+                fee,
+                balance: Some(sink.balances.get(margin.borrowed_amount.get_asset())),
+            };
+
+            sink.ledger_rows.push(LedgerRow::Margin((&row_fee).into()));
+
+            row_fee
+        } else {
             // For single-row closing, the expected fee row is basically empty.
             MarginFeeRow {
                 txid: row_proceeds.txid.clone(),
                 refid: row_proceeds.refid.clone(),
                 time: row_proceeds.time,
-                amount: fee_asset_zero,
-                fee: fee_asset_zero,
+                amount: fee_zero,
+                fee: fee_zero,
                 balance: None,
             }
-        } else {
-            // For two-row closing, the fee is non-zero and is added to the ledger.
-            let row_fee = MarginFeeRow {
-                txid: generate_ledger_id(u)?,
-                refid: row_proceeds.refid.clone(),
-                time: row_proceeds.time,
-                amount: fee_asset_zero,
-                fee,
-                balance: Some(balance),
-            };
-
-            ledger_rows.push(LedgerRow::Margin((&row_fee).into()));
-
-            row_fee
         };
 
+        // Generate closing event in trades.csv.
+        let pair = get_asset_pair(margin.position_asset, margin.borrowed_amount.get_asset())
+            .0
+            .as_kraken();
+        let trade_state = TradeState {
+            pair,
+            datetime,
+            order_id,
+            price: proceeds,
+            vol: margin.borrowed_amount,
+            fee: fee_total,
+            margin: margin_amount,
+            misc: "closing",
+            ledgers,
+        };
+        sink.trades_rows.insert(trade_id, trade_state);
+
         // Insert expected row.
-        expected_rows.push(LedgerParsed::MarginPositionClose {
+        sink.expected_rows.push(LedgerParsed::MarginPositionClose {
             row_proceeds,
             row_fee,
-            exchange_rate: price,
+            exchange_rate: proceeds,
         });
 
         Ok(())
@@ -1152,8 +1245,12 @@ impl ExchangeOp {
                 KrakenAmount::from(amount)
             }
             Chf | Eur | Usd => KrakenAmount::try_from((asset, generate_fiat_amount(u)?)).unwrap(),
-            Eth | EthW => {
+            Eth => {
                 let amount: EtherAmount = generate_asset(u, KRAKEN_CRYPTO_INPUT_DIGITS, BIAS_ETH)?;
+                KrakenAmount::from(amount)
+            }
+            EthW => {
+                let amount: EthWAmount = generate_asset(u, KRAKEN_CRYPTO_INPUT_DIGITS, BIAS_ETH)?;
                 KrakenAmount::from(amount)
             }
             Jpy => {
@@ -1193,9 +1290,36 @@ impl ExchangeOp {
         gen: &mut ExchangeGen,
         datetime: DateTime<Utc>,
     ) -> ArbResult<()> {
-        // TODO: Only supporting EthW TransferFutures because that's what has been used in practice.
-        let amount: EthWAmount = generate_asset(u, KRAKEN_CRYPTO_INPUT_DIGITS, BIAS_ETH)?;
-        let amount = KrakenAmount::from(amount);
+        // Transfer funds from the futures account to the spot account.
+        use AssetName::*;
+
+        let asset = *u.choose(&[Btc, Eth, EthW, Usdc, Usdt])?;
+        let amount = match asset {
+            Btc => {
+                let amount: BitcoinAmount =
+                    generate_asset(u, KRAKEN_CRYPTO_INPUT_DIGITS, BIAS_BTC)?;
+                KrakenAmount::from(amount)
+            }
+            Eth => {
+                let amount: EtherAmount = generate_asset(u, KRAKEN_CRYPTO_INPUT_DIGITS, BIAS_ETH)?;
+                KrakenAmount::from(amount)
+            }
+            EthW => {
+                let amount: EthWAmount = generate_asset(u, KRAKEN_CRYPTO_INPUT_DIGITS, BIAS_ETH)?;
+                KrakenAmount::from(amount)
+            }
+            Usdc => {
+                let amount: UsdcAmount =
+                    generate_asset(u, KRAKEN_STABLECOIN_DIGITS, BIAS_STABLECOIN)?;
+                KrakenAmount::from(amount)
+            }
+            Usdt => {
+                let amount: UsdtAmount =
+                    generate_asset(u, KRAKEN_STABLECOIN_DIGITS, BIAS_STABLECOIN)?;
+                KrakenAmount::from(amount)
+            }
+            _ => unreachable!(),
+        };
 
         let refid = generate_trade_id(u)?;
         let funding = ScheduledFunding::generate(u, refid.clone(), amount, datetime)?;
@@ -1258,6 +1382,10 @@ fn generate_ledger_id(u: &mut Unstructured<'_>) -> ArbResult<String> {
 
 fn generate_trade_id(u: &mut Unstructured<'_>) -> ArbResult<String> {
     Ok(format!("T{}", generate_id(u)?))
+}
+
+fn generate_order_id(u: &mut Unstructured<'_>) -> ArbResult<String> {
+    Ok(format!("O{}", generate_id(u)?))
 }
 
 fn generate_id(u: &mut Unstructured<'_>) -> ArbResult<String> {
@@ -1410,21 +1538,30 @@ fn generate_trade_pair(u: &mut Unstructured<'_>, gen: &ExchangeGen) -> ArbResult
 fn generate_margin_pair(u: &mut Unstructured<'_>, gen: &ExchangeGen) -> ArbResult<Pair> {
     use Pair::*;
 
-    // Create a list of valid trade pairs for margin trades, based on generator state.
-    // TODO: This only uses asset pairs that have been used in practice.
+    // Create a list of valid margin trade pairs, based on generator state.
+    //
+    // The borrowed asset is the pair's base, so a pair is only valid if the base asset has a
+    // positive available balance. `UsdJpy` is not valid for margin, and `Kraken` does not offer
+    // margin on the `EthW` pairs.
     let mut pairs = Vec::new();
 
     if gen.get_available_balance(AssetName::Btc).is_positive() {
         pairs.extend([BtcChf, BtcEur, BtcJpy, BtcUsd, BtcUsdc, BtcUsdt]);
     }
     if gen.get_available_balance(AssetName::Eth).is_positive() {
-        pairs.extend([EthBtc, EthUsd]);
+        pairs.extend([EthBtc, EthChf, EthEur, EthJpy, EthUsd, EthUsdc, EthUsdt]);
+    }
+    if gen.get_available_balance(AssetName::Eur).is_positive() {
+        pairs.extend([EurChf, EurJpy, EurUsd]);
+    }
+    if gen.get_available_balance(AssetName::Usd).is_positive() {
+        pairs.extend([UsdChf]);
     }
     if gen.get_available_balance(AssetName::Usdc).is_positive() {
-        pairs.extend([UsdcChf, UsdcEur]);
+        pairs.extend([UsdcChf, UsdcEur, UsdcUsd, UsdcUsdt]);
     }
     if gen.get_available_balance(AssetName::Usdt).is_positive() {
-        pairs.extend([UsdtChf, UsdtEur, UsdtUsd]);
+        pairs.extend([UsdtChf, UsdtEur, UsdtJpy, UsdtUsd]);
     }
 
     u.choose_iter(pairs)

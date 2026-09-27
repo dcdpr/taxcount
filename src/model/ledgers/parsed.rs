@@ -1,5 +1,5 @@
 use crate::model::ledgers::rows::{LedgerRow, LedgerRowDeposit, LedgerRowTypical, TradeRow};
-use crate::model::pairs::{get_asset_pair, Trade};
+use crate::model::pairs::{get_asset_pair, Pair, Trade};
 use crate::util::{fifo::FIFO, year_ext::GetYear};
 use crate::{basis::AssetName, model::KrakenAmount};
 use chrono::{DateTime, Datelike as _, Utc};
@@ -340,18 +340,13 @@ impl FIFO<LedgerRow> {
     }
 }
 
-// TODO: Deduplicate with `Pair`.
 /// Returns the Kraken asset name from a pair (the pair's base). Used for constructing a zero
 /// `KrakenAmount` for the asset.
 fn kraken_asset_from_pair(pair: &str) -> &str {
-    match pair {
-        "USDCCHF" | "USDC/CHF" | "USDCEUR" | "USDC/EUR" => "USDC",
-        "USDTCHF" | "USDT/CHF" | "USDTEUR" | "USDT/EUR" | "USDTZUSD" | "USDT/USD" => "USDT",
-        "XETHXXBT" | "ETH/BTC" | "XETHZUSD" | "ETH/USD" => "XETH",
-        "XBTCHF" | "BTC/CHF" | "XBTUSDC" | "BTC/USDC" | "XBTUSDT" | "BTC/USDT" | "XXBTZEUR"
-        | "BTC/EUR" | "XXBTZJPY" | "BTC/JPY" | "XXBTZUSD" | "BTC/USD" => "XXBT",
-        _ => panic!("Unknown asset pair: {pair}"),
-    }
+    Pair::from_kraken(pair)
+        .unwrap_or_else(|| panic!("Unknown asset pair: {pair}"))
+        .get_base()
+        .as_kraken()
 }
 
 #[cfg(test)]
