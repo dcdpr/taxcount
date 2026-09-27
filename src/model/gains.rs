@@ -372,9 +372,12 @@ impl CapGainsWorksheet {
             .worksheet
             .iter()
             .flat_map(|row| {
-                row.event_details
-                    .iter()
-                    .map(|detail| (row.ledger_row_id.as_str(), detail))
+                row.event_details.iter().map(|detail| {
+                    let ledger_row_id =
+                        detail.ledger_row_id().unwrap_or(row.ledger_row_id.as_str());
+
+                    (ledger_row_id, detail)
+                })
             })
             .collect();
 

@@ -86,6 +86,9 @@ pub(crate) enum EventAtom {
         /// True when the fee offsets the trade atoms' proceeds on the same ledger row as the
         /// outgoing amount. Only then do the fee's proceeds book into the trade cells.
         reduces_proceeds: bool,
+
+        /// The txid of the ledger row that paid this fee, when it is not the event's own row.
+        ledger_row_id: Option<String>,
     },
 
     /// An investment interest expense (margin position rollover).
@@ -93,6 +96,9 @@ pub(crate) enum EventAtom {
         asset_amount: KrakenAmount, // Column C
         proceeds: UsdAmount,        // Column D
         net_gain: GainTerm,         // Columns E-...
+
+        /// The txid of the ledger row that paid this fee, when it is not the event's own row.
+        ledger_row_id: Option<String>,
     },
 }
 
@@ -339,12 +345,17 @@ impl Event {
     /// (the event has no defined rate covering the fee asset), the fee asset's market rate at the
     /// event date-time is used.
     ///
+    /// `ledger_row_id` is the txid of the ledger row that paid the fee. When it differs from the
+    /// event's own row, it is recorded on the fee atom so the event-detail CSVs can show each
+    /// fee's true row.
+    ///
     /// Returns the sum of all fee atoms' proceeds, along with any exchange rate errors.
     pub(crate) fn add_fee<A>(
         &mut self,
         split_assets: Vec<PoolAssetNonSplittable<A>>,
         fee_rate: Option<UsdAmount>,
         gain_config: &GainConfig,
+        ledger_row_id: Option<&str>,
     ) -> (Vec<ExchangeRateError>, UsdAmount)
     where
         A: Asset + Copy,
@@ -352,6 +363,11 @@ impl Event {
     {
         let mut errors = vec![];
         let mut fee_value = UsdAmount::default();
+
+        // Record the fee's row only when it is not the event's own row.
+        let ledger_row_id = ledger_row_id
+            .filter(|id| **id != self.event_info.ledger_row_id)
+            .map(str::to_string);
 
         for asset in split_assets {
             let rate = match fee_rate {
@@ -371,7 +387,14 @@ impl Event {
                 }
             };
 
-            match EventAtom::from_fee_split(asset, &self.event_info, rate, gain_config) {
+            let res = EventAtom::from_fee_split(
+                asset,
+                &self.event_info,
+                rate,
+                gain_config,
+                &ledger_row_id,
+            );
+            match res {
                 Ok(atom) => {
                     fee_value += atom.proceeds().expect("Fee atom has proceeds");
                     self.event_details.push(atom);
@@ -664,11 +687,15 @@ impl EventAtom {
     /// date (short-term/long-term against the event date, US/territory against the bona fide
     /// residency date). Margin position rollovers become investment fee atoms (investment interest
     /// expenses). All other fees become fee atoms.
+    ///
+    /// `ledger_row_id` is the fee's ledger row, when it is not the event's own row (see
+    /// [`Event::add_fee`]).
     fn from_fee_split<A>(
         split: PoolAssetNonSplittable<A>,
         event_info: &EventInfo,
         fee_rate: UsdAmount,
         gain_config: &GainConfig,
+        ledger_row_id: &Option<String>,
     ) -> Result<Self, ExchangeRateError>
     where
         A: Asset,
@@ -721,6 +748,7 @@ impl EventAtom {
                 asset_amount: -asset_fee, // Fees are always outgoing.
                 proceeds,
                 net_gain,
+                ledger_row_id: ledger_row_id.clone(),
             })
         } else {
             Ok(Self::Fee {
@@ -728,7 +756,20 @@ impl EventAtom {
                 proceeds,
                 net_gain,
                 reduces_proceeds: false,
+                ledger_row_id: ledger_row_id.clone(),
             })
+        }
+    }
+
+    /// The txid of the ledger row that paid this fee, when it is not the event's own row.
+    ///
+    /// Only `Some` for fee atoms.
+    pub(crate) fn ledger_row_id(&self) -> Option<&str> {
+        match self {
+            Self::Fee { ledger_row_id, .. } | Self::InvestmentFee { ledger_row_id, .. } => {
+                ledger_row_id.as_deref()
+            }
+            _ => None,
         }
     }
 

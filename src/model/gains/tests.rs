@@ -34,6 +34,7 @@ fn pr_statement24_dates_from_fees_only() {
                     net_gain: usd(-5000),
                 }),
                 reduces_proceeds: false,
+                ledger_row_id: None,
             }],
         }],
     };
