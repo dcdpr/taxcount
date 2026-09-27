@@ -45,7 +45,6 @@ pub(crate) enum Pair {
     UsdtUsd,
 }
 
-#[cfg(test)]
 impl Pair {
     pub(crate) fn as_kraken(self) -> &'static str {
         use Pair::*;
@@ -116,6 +115,23 @@ impl Pair {
             BtcUsdc | EthUsdc => AssetName::Usdc,
             BtcUsdt | EthUsdt | UsdcUsdt => AssetName::Usdt,
         }
+    }
+
+    /// Parse a Kraken trade pair, e.g. `"XXBTZEUR"` or `"BTC/EUR"`.
+    pub(crate) fn from_kraken(pair: &str) -> Option<Pair> {
+        use Pair::*;
+
+        const PAIRS: [Pair; 29] = [
+            BtcChf, BtcEur, BtcJpy, BtcUsd, BtcUsdc, BtcUsdt, EthBtc, EthChf, EthEur, EthJpy,
+            EthUsd, EthUsdc, EthUsdt, EthWEth, EthWEur, EthWUsd, EurChf, EurJpy, EurUsd, UsdChf,
+            UsdJpy, UsdcChf, UsdcEur, UsdcUsd, UsdcUsdt, UsdtChf, UsdtEur, UsdtJpy, UsdtUsd,
+        ];
+
+        PAIRS.into_iter().find(|p| {
+            let plain = format!("{}/{}", p.get_base().as_plain(), p.get_quote().as_plain());
+
+            p.as_kraken() == pair || plain == pair
+        })
     }
 }
 
