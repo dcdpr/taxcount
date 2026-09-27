@@ -1,6 +1,5 @@
-use crate::model::events::{Event, EventAtom, EventSubType};
-use crate::model::events::{GainPortion, GainTerm};
-use crate::{basis::AssetName, model::kraken_amount::UsdAmount};
+use crate::model::events::{Event, EventAtom, EventSubType, GainPortion, GainTerm};
+use crate::model::kraken_amount::UsdAmount;
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
 
@@ -14,15 +13,14 @@ pub struct CapGainsWorksheet {
 
 #[derive(Debug)]
 struct CapGainsWorksheetRow {
-    event_date: DateTime<Utc>,         // Column A
-    internal_account: String,          // Column B
-    ledger_row_id: String,             // Column C (Debugging only. `txid` in `LedgerRow`)
-    event_subtype: EventSubType,       // Column D (Debugging only.)
-    event_name: String,                // Column E (Debugging only.)
-    asset_out_exchange_rate: String,   // Column F (Debugging only.)
-    asset_in_exchange_rate: String,    // Column G (Debugging only.)
-    fee_asset_name: Option<AssetName>, // Column H (Debugging only.)
-    proceeds: UsdAmount,               // Column I
+    event_date: DateTime<Utc>,       // Column A
+    internal_account: String,        // Column B
+    ledger_row_id: String,           // Column C (Debugging only. `txid` in `LedgerRow`)
+    event_subtype: EventSubType,     // Column D (Debugging only.)
+    event_name: String,              // Column E (Debugging only.)
+    asset_out_exchange_rate: String, // Column F (Debugging only.)
+    asset_in_exchange_rate: String,  // Column G (Debugging only.)
+    proceeds: UsdAmount,             // Column H
     event_details: Vec<EventAtom>,
 }
 
@@ -87,8 +85,8 @@ impl Display for CapGainsWorksheet {
                 r#""Event Date","Internal Account","Ledger Row ID","Event Sub-Type","#,
                 // Columns E-G
                 r#""Event Description","Asset Out Exchange Rate","Asset In Exchange Rate","#,
-                // Columns H-I
-                r#""Fee Asset Name","Proceeds""#,
+                // Column H
+                r#""Proceeds""#,
             )
         )?;
 
@@ -122,17 +120,8 @@ impl Display for CapGainsWorksheetRow {
             asset_out_exchange_rate = self.asset_out_exchange_rate,
             asset_in_exchange_rate = self.asset_in_exchange_rate,
         )?;
-        // Columns H-I
-        let fee_asset_name = self
-            .fee_asset_name
-            .map(|name| name.to_string())
-            .unwrap_or_default();
-        write!(
-            f,
-            r#""{fee_asset_name}","{proceeds}""#,
-            fee_asset_name = fee_asset_name,
-            proceeds = self.proceeds,
-        )?;
+        // Column H
+        write!(f, r#""{proceeds}""#, proceeds = self.proceeds)?;
 
         Ok(())
     }
@@ -646,7 +635,6 @@ impl CapGainsWorksheetRow {
             event_name: event.event_info.event_name,
             asset_out_exchange_rate,
             asset_in_exchange_rate,
-            fee_asset_name: event.fee_asset_name,
             proceeds: event.event_info.proceeds,
             event_details: event.event_details,
         }
