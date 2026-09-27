@@ -6,8 +6,9 @@ use crate::model::checkpoint::{Pending, PendingAccountTx, PendingTxInfo, Pending
 use crate::model::events::{Event, GainConfig, WalletDirection};
 use crate::model::kraken_amount::{BitcoinAmount, EthWAmount, EtherAmount, UsdcAmount, UsdtAmount};
 use crate::model::kraken_amount::{FiatAmount, KrakenAmount, UsdAmount};
-use crate::model::ledgers::parsed::{LedgerMarginClose, LedgerParsed, LedgerTwoRowTrade};
-use crate::model::ledgers::rows::{BasisRow, LedgerRowDeposit, TradeRow};
+use crate::model::ledgers::parsed::{LedgerMarginClose, MarginFeeRow};
+use crate::model::ledgers::parsed::{LedgerParsed, LedgerTwoRowTrade};
+use crate::model::ledgers::rows::{BasisRow, LedgerRowDeposit, LedgerRowTypical, TradeRow};
 use crate::model::pairs::{get_asset_pair, Trade};
 use crate::{errors::ExchangeRateError, util::fifo::FIFO};
 use chrono::{DateTime, Utc};
@@ -112,6 +113,52 @@ struct Args {
     pending_withdrawals: Pending,
 
     basis_lookup: BasisLookup,
+}
+
+/// This is a container for the common arguments for releasing pool assets.
+#[derive(Debug)]
+struct Release<'a> {
+    /// The event that the released trade and fee atoms are appended to.
+    event: &'a mut Event,
+
+    /// The txid of the ledger row being drained.
+    ledger_row_id: &'a str,
+
+    /// The amount to release from the pool. Negative for a disposal, zero when only the fee is
+    /// released.
+    amount: KrakenAmount,
+
+    /// The fee paid on the row. Negative, or zero when it is capitalized into the incoming asset's
+    /// basis.
+    fee_amount: KrakenAmount,
+
+    /// The rate the event defines for the fee asset, if any. When `None`, the market rate at the
+    /// event date-time is used.
+    fee_rate: Option<UsdAmount>,
+}
+
+impl<'a> From<(&'a mut Event, &'a LedgerRowTypical)> for Release<'a> {
+    fn from((event, row): (&'a mut Event, &'a LedgerRowTypical)) -> Self {
+        Self {
+            event,
+            ledger_row_id: &row.txid,
+            amount: row.amount,
+            fee_amount: -row.fee,
+            fee_rate: None,
+        }
+    }
+}
+
+impl<'a> From<(&'a mut Event, &'a MarginFeeRow)> for Release<'a> {
+    fn from((event, row): (&'a mut Event, &'a MarginFeeRow)) -> Self {
+        Self {
+            event,
+            ledger_row_id: &row.txid,
+            amount: row.amount,
+            fee_amount: -row.fee,
+            fee_rate: None,
+        }
+    }
 }
 
 /// Given a list of wallets and ledgers, return the earliest timestamp found.
@@ -295,6 +342,7 @@ macro_rules! match_one_tx_inner {
                     .collect(),
                 None,
                 &$args.gain_config,
+                None,
             );
             if !errors.is_empty() {
                 return errors.into_iter().map(|err| Err(err.into())).collect();
@@ -521,6 +569,7 @@ macro_rules! match_one_tx_inner {
                         .collect(),
                     exchange_rate,
                     &$args.gain_config,
+                    None,
                 );
                 if !errors.is_empty() {
                     return errors.into_iter().map(|err| Err(err.into())).collect();
@@ -920,13 +969,19 @@ impl State {
                     -row_out.fee
                 };
 
-            // The event's defined rate covers the outgoing (row_out) asset, which is also the
-            // asset the row_out fee is denominated in. It does not cover a row_in fee, which
-            // falls back to the market rate.
-            let asset_fee = (row_out_fee, event.event_info.asset_out_exchange_rate);
-            let mut errors = self.release_poolasset(&mut event, args, row_out.amount, asset_fee);
-            let input_errors =
-                self.release_poolasset(&mut event, args, row_in.amount, (-row_in.fee, None));
+            // The event's defined rate covers the outgoing (row_out) asset, which is also the asset
+            // the row_out fee is denominated in. It does not cover a row_in fee, which falls back
+            // to the market rate.
+            let fee_rate = event.event_info.asset_out_exchange_rate;
+            let release = Release {
+                event: &mut event,
+                ledger_row_id: &row_out.txid,
+                amount: row_out.amount,
+                fee_amount: row_out_fee,
+                fee_rate,
+            };
+            let mut errors = self.release_poolasset(args, release);
+            let input_errors = self.release_poolasset(args, (&mut event, row_in).into());
 
             errors.extend(input_errors);
 
@@ -961,8 +1016,7 @@ impl State {
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let asset_fee = (-row_open.fee, None);
-            let mut errors = self.release_poolasset(&mut event, args, row_open.amount, asset_fee);
+            let mut errors = self.release_poolasset(args, (&mut event, row_open).into());
 
             // The remainder of the fee, paid in a second asset on its own row.
             if let Some(row_fee) = row_fee {
@@ -970,8 +1024,7 @@ impl State {
                 assert!(row_fee.fee.is_zero() || row_fee.fee.is_positive());
 
                 // No defined rate covers the fee asset: the market rate is used.
-                let asset_fee = (-row_fee.fee, None);
-                errors.extend(self.release_poolasset(&mut event, args, row_fee.amount, asset_fee));
+                errors.extend(self.release_poolasset(args, (&mut event, row_fee).into()));
             }
 
             if errors.is_empty() {
@@ -1004,7 +1057,7 @@ impl State {
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errors = self.release_poolasset(&mut event, args, lrt.amount, (-lrt.fee, None));
+            let errors = self.release_poolasset(args, (&mut event, lrt).into());
 
             if errors.is_empty() {
                 vec![Ok(event)]
@@ -1038,7 +1091,7 @@ impl State {
             );
 
             // No defined rate covers the fee asset: the market rate is used.
-            let errors = self.release_poolasset(&mut event, args, lrt.amount, (-lrt.fee, None));
+            let errors = self.release_poolasset(args, (&mut event, lrt).into());
 
             if errors.is_empty() {
                 vec![Ok(event)]
@@ -1107,12 +1160,10 @@ impl State {
             }
 
             // No defined rate covers the fee asset: the market rate is used.
-            let asset_fee = (-row_proceeds.fee, None);
-            let errs = self.release_poolasset(&mut event, args, row_proceeds.amount, asset_fee);
+            let errs = self.release_poolasset(args, (&mut event, row_proceeds).into());
             errors.extend(errs);
 
-            let asset_fee = (-row_fee.fee, None);
-            let errs = self.release_poolasset(&mut event, args, row_fee.amount, asset_fee);
+            let errs = self.release_poolasset(args, (&mut event, row_fee).into());
             errors.extend(errs);
 
             if errors.is_empty() {
@@ -1265,69 +1316,65 @@ impl State {
 
     /// Release a PoolAsset, e.g. a Sell or Fee.
     ///
-    /// `asset_fee` is the fee paid in any asset and its USD rate (if any).
-    fn release_poolasset(
-        &mut self,
-        event: &mut Event,
-        args: &mut Args,
-        asset_amount: KrakenAmount,
-        asset_fee: (KrakenAmount, Option<UsdAmount>),
-    ) -> Vec<PriceError> {
-        debug!("release_poolasset() event: {event:?}");
-        if asset_amount.is_negative() {
-            debug!("release_poolasset() asset_amount: {asset_amount:?}");
+    /// `release` describes the single ledger row being drained: the amount to release from the
+    /// pool, and the fee paid on that row. The trade and fee atoms are appended to
+    /// `release.event`.
+    fn release_poolasset(&mut self, args: &mut Args, release: Release) -> Vec<PriceError> {
+        debug!("release_poolasset() event: {:?}", release.event);
+        if release.amount.is_negative() {
+            debug!("release_poolasset() amount: {:?}", release.amount);
         }
-        if asset_fee.0.is_negative() {
-            debug!("release_poolasset() asset_fee: {:?}", asset_fee.0);
+        if release.fee_amount.is_negative() {
+            debug!("release_poolasset() fee_amount: {:?}", release.fee_amount);
         }
 
         let gain_config = &args.gain_config;
 
-        match (asset_amount, asset_fee.0) {
+        match (release.amount, release.fee_amount) {
             (KrakenAmount::Usd(_), KrakenAmount::Usd(_)) => {
                 let fifo = &mut self.exchange_balances.usd;
                 let utxos = &mut args.pending_withdrawals.usd;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Btc(_), KrakenAmount::Btc(_)) => {
                 let fifo = &mut self.exchange_balances.btc;
                 let utxos = &mut args.pending_withdrawals.btc;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Chf(_), KrakenAmount::Chf(_)) => {
                 let fifo = &mut self.exchange_balances.chf;
                 let utxos = &mut args.pending_withdrawals.chf;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Eth(_), KrakenAmount::Eth(_)) => {
                 let fifo = &mut self.exchange_balances.eth;
                 let utxos = &mut args.pending_withdrawals.eth;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::EthW(_), KrakenAmount::EthW(_)) => {
                 let fifo = &mut self.exchange_balances.ethw;
                 let utxos = &mut args.pending_withdrawals.ethw;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Eur(_), KrakenAmount::Eur(_)) => {
                 let fifo = &mut self.exchange_balances.eur;
                 let utxos = &mut args.pending_withdrawals.eur;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Jpy(_), KrakenAmount::Jpy(_)) => {
                 let fifo = &mut self.exchange_balances.jpy;
                 let utxos = &mut args.pending_withdrawals.jpy;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Usdc(_), KrakenAmount::Usdc(_)) => {
                 let fifo = &mut self.exchange_balances.usdc;
                 let utxos = &mut args.pending_withdrawals.usdc;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             (KrakenAmount::Usdt(_), KrakenAmount::Usdt(_)) => {
                 let fifo = &mut self.exchange_balances.usdt;
                 let utxos = &mut args.pending_withdrawals.usdt;
-                release_poolasset_inner(event, fifo, utxos, asset_amount, asset_fee, gain_config)
+                release_poolasset_inner(fifo, utxos, release, gain_config)
             }
             _ => todo!("Unsupported asset in release_poolasset()"),
         }
@@ -1641,6 +1688,7 @@ where
                 .collect(),
             event.event_info.asset_out_exchange_rate,
             gain_config,
+            None,
         );
         if errors.is_empty() {
             // Trade fees offset the trade atoms' proceeds.
@@ -1726,6 +1774,7 @@ where
                 .collect(),
             None,
             gain_config,
+            None,
         );
         if errors.is_empty() {
             Ok(Some(event))
@@ -1739,11 +1788,9 @@ where
 }
 
 fn release_poolasset_inner<A, B, T>(
-    event: &mut Event,
     fifo: &mut FIFO<PoolAsset<A>>,
     pending_withdrawals: &mut T,
-    asset_amount: KrakenAmount,
-    asset_fee: (KrakenAmount, Option<UsdAmount>),
+    release: Release,
     gain_config: &GainConfig,
 ) -> Vec<PriceError>
 where
@@ -1755,15 +1802,22 @@ where
     KrakenAmount: From<A>,
 {
     let mut errors = vec![];
+    let Release {
+        event,
+        ledger_row_id,
+        amount,
+        fee_amount,
+        fee_rate,
+    } = release;
 
     // Atoms added before this call must not be modified by the pro-rata proceeds reduction below.
     let trade_atom_start = event.event_details.len();
 
-    if asset_amount.is_negative() {
-        match consume_poolasset(fifo, asset_amount) {
+    if amount.is_negative() {
+        match consume_poolasset(fifo, amount) {
             Ok(split_assets) => {
                 if event.event_info.asset_out_exchange_rate.is_some()
-                    && !matches!(asset_amount, KrakenAmount::Usd(_))
+                    && !matches!(amount, KrakenAmount::Usd(_))
                 {
                     let split_assets = split_assets
                         .into_iter()
@@ -1798,8 +1852,8 @@ where
             Err(error) => errors.push(error),
         }
     }
-    if asset_fee.0.is_negative() {
-        match consume_poolasset(fifo, asset_fee.0) {
+    if fee_amount.is_negative() {
+        match consume_poolasset(fifo, fee_amount) {
             Ok(split_assets) => {
                 let split_assets = split_assets
                     .into_iter()
@@ -1809,8 +1863,8 @@ where
                 // `fee_rate` covers the fee asset when the event has a defined rate for it.
                 // Otherwise `add_fee` falls back to the fee asset's market rate at the event
                 // date-time.
-                let fee_rate = asset_fee.1;
-                let (fee_errors, fee_value) = event.add_fee(split_assets, fee_rate, gain_config);
+                let (fee_errors, fee_value) =
+                    event.add_fee(split_assets, fee_rate, gain_config, Some(ledger_row_id));
                 errors.extend(fee_errors.into_iter().map(|error| error.into()));
 
                 // Trade fees offset the trade atoms' proceeds added by this same call: the trade
@@ -2071,8 +2125,10 @@ mod tests {
                 proceeds,
                 net_gain,
                 reduces_proceeds,
+                ledger_row_id,
             } => {
                 assert!(*reduces_proceeds);
+                assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.00020000".parse().unwrap());
                 // 0.0002 * 34885.60
                 assert_eq!(
@@ -2271,8 +2327,10 @@ mod tests {
                 proceeds,
                 net_gain,
                 reduces_proceeds,
+                ledger_row_id,
             } => {
                 assert!(*reduces_proceeds);
+                assert!(ledger_row_id.is_none());
                 assert_eq!(
                     asset_amount,
                     &KrakenAmount::new("XXBT", "-0.00300000").unwrap(),
@@ -2407,8 +2465,10 @@ mod tests {
                 proceeds,
                 net_gain,
                 reduces_proceeds,
+                ledger_row_id,
             } => {
                 assert!(!*reduces_proceeds);
+                assert!(ledger_row_id.is_none());
                 assert_eq!(
                     asset_amount,
                     &KrakenAmount::new("XXBT", "-0.03000000").unwrap(),
@@ -2633,8 +2693,10 @@ mod tests {
                 proceeds,
                 net_gain,
                 reduces_proceeds,
+                ledger_row_id,
             } => {
                 assert!(*reduces_proceeds);
+                assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.00800000".parse().unwrap());
                 assert_eq!(*proceeds, usd("8.0000"));
                 let us = if fee.3 {
@@ -2784,8 +2846,10 @@ mod tests {
                 proceeds,
                 net_gain,
                 reduces_proceeds,
+                ledger_row_id,
             } => {
                 assert!(!*reduces_proceeds);
+                assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
                 assert_eq!(*proceeds, usd("20.0000"));
                 let us = long_us(net_gain);
@@ -2812,7 +2876,9 @@ mod tests {
                     asset_amount,
                     proceeds,
                     net_gain,
+                    ledger_row_id,
                 } => {
+                    assert!(ledger_row_id.is_none());
                     assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
                     assert_eq!(*proceeds, usd("20.0000"));
                     let us = long_us(net_gain);
@@ -2852,5 +2918,75 @@ mod tests {
             .get_exchange_rate_at_acquisition(&db)
             .unwrap();
         assert_eq!(rate, usd("50.0000"));
+    }
+
+    #[test]
+    fn margin_open_two_row_fee() {
+        let (_state, events) = run(
+            "margin-open-two-row-fee",
+            rates(&["2026-07-25"], &[]),
+            vec![basis_row("ca5e04-1ed9e-000002")],
+        );
+
+        let open = find_event(&events, "2026-07-25 08:00:00", |s| {
+            matches!(s, EventSubType::MarginOpen)
+        });
+
+        // The event's row is the first ledger row (the one that pays the USD fee).
+        assert_eq!(open.event_info.ledger_row_id, "ca5e04-1ed9e-000003");
+        assert_eq!(open.event_details.len(), 2);
+
+        let fee_atoms = atoms_of(open, |a| matches!(a, EventAtom::Fee { .. }));
+        assert_eq!(fee_atoms.len(), 2);
+
+        // First row: 0.50 USD fee. Definitional $1 both ways: zero gain, ST. The fee is paid
+        // on the event's own ledger row, so it carries no row override.
+        match fee_atoms[0] {
+            EventAtom::Fee {
+                asset_amount,
+                proceeds,
+                net_gain,
+                reduces_proceeds,
+                ledger_row_id,
+            } => {
+                assert!(!*reduces_proceeds);
+                assert!(ledger_row_id.is_none());
+                assert_eq!(asset_amount, &KrakenAmount::new("ZUSD", "-0.5000").unwrap(),);
+                assert_eq!(*proceeds, usd("0.5000"));
+                let us = short_us(net_gain);
+                assert_eq!(us.basis, usd("0.5000"));
+                assert_eq!(us.net_gain, usd("0.0000"));
+            }
+            other => panic!("expected fee atom, got {other:?}"),
+        }
+
+        // Second row: 0.0001 BTC fee ($0.10) against the $10/BTC LT deposit: $0.0990 gain.
+        // The atom must carry its own ledger row ID, not the event's.
+        match fee_atoms[1] {
+            EventAtom::Fee {
+                asset_amount,
+                proceeds,
+                net_gain,
+                reduces_proceeds,
+                ledger_row_id,
+            } => {
+                assert!(!*reduces_proceeds);
+                assert_eq!(ledger_row_id.as_deref(), Some("ca5e04-1ed9e-000004"));
+                assert_eq!(
+                    asset_amount,
+                    &KrakenAmount::new("XXBT", "-0.00010000").unwrap(),
+                );
+                assert_eq!(*proceeds, usd("0.1000"));
+                let us = long_us(net_gain);
+                assert_eq!(us.basis, usd("0.0010"));
+                assert_eq!(us.net_gain, usd("0.0990"));
+            }
+            other => panic!("expected fee atom, got {other:?}"),
+        }
+
+        let sums = sums(events);
+        assert_eq!(sums.gains_us_long(), usd("0.0990"));
+        assert_eq!(sums.gains_us_short(), usd("0.0000"));
+        assert_eq!(sums.ledger_proceeds(), usd("0.0000"));
     }
 }

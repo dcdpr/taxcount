@@ -7,6 +7,10 @@ are Kraken's published rates as of the July 2026 schedule: spot Tier-1
 taker 0.80% (maker 0.40%), BTC-pair margin open 0.02%, margin rollover
 0.02% per 4 hours.
 
+A fourth scenario, margin-open-two-row-fee, is a separate regression
+fixture (a margin open fee paid across two ledger rows). It is unrelated
+to the three scenarios above.
+
 Sources:
 - https://www.kraken.com/features/fee-schedule
 - https://support.kraken.com/articles/cross-platform-fee-tier-changes
