@@ -51,7 +51,7 @@ jobs:
       - name: Cargo doc
         run: cargo doc --workspace --no-deps --all-features
       - name: Cargo clippy
-        run: cargo clippy --workspace --tests --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - name: Cargo machete
         run: cargo machete --with-metadata
 
