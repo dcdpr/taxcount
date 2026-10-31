@@ -25,18 +25,3 @@ fs_move_file.run = "ask"
 fs_delete_file.run = "ask"
 cargo_format.run = "ask"
 gitver.run = "ask"
-
-# Git index / repo.
-git_add_all.run = "ask"
-git_add_intent.run = "ask"
-git_stage_patch.run = "ask"
-git_stage_patch_lines.run = "ask"
-git_unstage.run = "ask"
-git_commit.run = "ask"
-
-# GitHub remote.
-github_create_issue_bug.run = "ask"
-github_create_issue_enhancement.run = "ask"
-github_create_issue_rfd_tracking.run = "ask"
-github_pr_review_add_comment.run = "ask"
-github_pr_review_add_reply.run = "ask"
