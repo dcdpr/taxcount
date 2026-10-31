@@ -1,0 +1,223 @@
+extends = [
+    "local/*.toml",
+    "config/personas/default.toml",
+    "tools/**/*.toml",
+]
+
+config_load_paths = [
+    ".jp/config",
+    ".jp/config/personas",
+]
+
+[assistant.model.parameters]
+reasoning = "auto"
+
+[conversation.inquiry.assistant.model]
+id = "summarizer"
+parameters.reasoning.effort = "auto"
+
+[conversation.title.generate.model]
+id = "summarizer"
+parameters.reasoning.effort = "low"
+
+[style.code]
+copy_link = "full"
+
+[style.reasoning]
+display = "full"
+background = "#503278"
+
+[conversation.tools.'*']
+run = "ask"
+
+[[conversation.attachments]]
+type = "cmd"
+path = "agentic-shepherd"
+params.arg = ["--help-schema"]
+params.description = "JSON Schema for all agentic-shepherd --json command invocations.  Find the exact fields each shepherd_run command requires."
+
+[conversation.tools.shepherd_run_schema]
+enable = true
+run = "unattended"
+source = "local"
+command = "agentic-shepherd --help-schema"
+summary = '''
+JSON Schema for all `agentic-shepherd --json <args>` command invocations.  Find the exact fields each shepherd_run command requires.
+'''
+
+[conversation.tools.shepherd_run]
+enable = true
+run = "unattended"
+source = "local"
+command = "agentic-shepherd --json {{tool.arguments.json}}"
+summary = '''
+Runs an agentic-shepherd command.  The `json` parameter is the complete JSON \
+payload passed to `agentic-shepherd --json`.  It must include a `command` field.
+
+The JSON Schema describing every command's required and optional
+fields is available using the shepherd_run_schema tool.  Consult it
+instead of guessing at arguments.
+
+## Never run agentic-shepherd commands in parallel
+
+agentic-shepherd is **not** thread- or process-safe.  Concurrent invocations \
+race on the same tracking files (`context.md`, `todos.md`, `done.md`, …) and \
+can corrupt them.  Always issue `shepherd_run` calls **one at a time**, waiting \
+for each to finish before starting the next.  Do not batch multiple \
+`shepherd_run` calls into a single parallel tool block, even when the commands \
+are logically independent.
+
+## agentic-shepherd commands, grouped by purpose
+
+Issue lifecycle
+
+- `NewIssue` — create a new issue (and automatically assign its number)
+- `MoveIssue` — move an issue between `todos`/`context`/`done`/`later`
+- `PrioritizeIssue` — reorder an issue (top, bottom, or 1-indexed)
+- `SetContext` — promote an issue to current working context
+- `ContextSwap` — atomically swap context for priority interruptions
+- `AddCommit` — attach a commit (or obsoletion) to an issue
+- `ListIssues` — list all open issues
+- `IssueDetail` — full info on a specific issue
+- `UpdateContext` — add/append/replace sections (Analysis, ImplementationPlan,
+  ProgressNotes, TestingResults, ImplementationDetails, Debugging, Catharsis)
+
+Validation / formatting
+
+- `Validate` — validate tracking markdown files (with optional `--fix`)
+- `CheckNewlines` — check/fix missing trailing newlines
+- `FmtAndStage` — run `cargo fmt` and auto-stage if workspace was clean
+
+Code Search and Grep
+
+- `CodeLocate` — unified search for strings, fns, structs, enums, and traits.  It offers fuzzy
+  fallback and grep of any text string, even when the index is old.
+
+Agent instructions / payload
+
+- `Init` — initialize agentic-shepherd payload in a project
+- `RebuildAgentInstructions` — rebuild `CLAUDE.md` from templates
+- `DiffAgentInstructions` — diff current vs. generated `CLAUDE.md`
+- `RetrieveEmbeddedInstructions` — extract embedded instructions to disk
+- `CullInstructions` — remove on-disk instructions identical to embedded
+
+Misc
+
+- `Timestamp` — generate UTC timestamp for a user
+'''
+
+[conversation.tools.shepherd_run.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.shepherd_run.parameters.json]
+type = "string"
+required = true
+summary = "Complete JSON payload for agentic-shepherd --json. Must include a 'command' field."
+
+# --- Project checks: shell commands wired as tools ---
+#
+# Each entry runs a single shell command (a cargo alias from .cargo/config.toml,
+# a script in bin/, or the local git pre-commit hook).  No parameters.
+
+[conversation.tools."pre-commit"]
+enable = true
+run = "unattended"
+source = "local"
+command = ".git/hooks/pre-commit"
+summary = "Run the repository's git pre-commit hook against the staged changes."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."clippy-all"]
+enable = true
+run = "unattended"
+source = "local"
+command = "cargo clippy-all"
+summary = "Run the strict workspace clippy lint (denies warnings; --frozen)."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."clippy-all-update-crates"]
+enable = true
+run = "unattended"
+source = "local"
+command = "cargo clippy-all-update-crates"
+summary = "Strict workspace clippy lint, allowing Cargo.lock updates."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."doc-all"]
+enable = true
+run = "unattended"
+source = "local"
+command = "cargo doc-all"
+summary = "Build workspace docs with private items and --keep-going (--frozen)."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."doc-all-update-crates"]
+enable = true
+run = "unattended"
+source = "local"
+command = "cargo doc-all-update-crates"
+summary = "Build workspace docs, allowing Cargo.lock updates."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."test-all"]
+enable = true
+run = "unattended"
+source = "local"
+command = "bin/test-all.sh"
+summary = "Run the full test suite via bin/test-all.sh."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."code-map-refresh-live"]
+enable = true
+run = "unattended"
+source = "local"
+command = "bin/code-map-refresh-live.zsh"
+summary = "Regenerate .agentic-shepherd/code-map.md for the live workspace."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."deny-check-update"]
+enable = true
+run = "unattended"
+source = "local"
+command = "bin/deny-update.sh"
+summary = "Run cargo-deny check; refreshes the advisory DB and re-stamps its freshness for the pre-commit hook only when the cached DB is missing or over 3 days old, otherwise runs offline."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."deny-check-offline"]
+enable = true
+run = "unattended"
+source = "local"
+command = "cargo deny-check-offline"
+summary = "Run cargo-deny check offline (uses the cached advisory DB; --disable-fetch)."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools.git_untracked]
+enable = true
+run = "unattended"
+source = "local"
+command = "git ls-files --others --exclude-standard"
+summary = "List untracked files not ignored by .gitignore (git ls-files --others --exclude-standard)."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."taxcount-run-offline-exchange-test"]
+enable = true
+run = "unattended"
+source = "local"
+command = "bin/taxcount-run-kraken-tests.sh"
+summary = "Run taxcount against exchange data, using Kraken ledger entries."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools."sha256sum"]
+enable = true
+run = "unattended"
+source = "local"
+command = { program = "sh", args = ["-c", "printf '%s\\n' \"$1\" | shasum -a 256", "sh", "{{tool.arguments.json}}"] }
+summary = "get a sha256 hash of the input string."
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }
+
+[conversation.tools.sha256sum.parameters.json]
+type = "string"
+required = true
+summary = "Input string to be hashed.  Passed into echo with single quotes."

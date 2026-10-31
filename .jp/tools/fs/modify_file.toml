@@ -1,0 +1,121 @@
+[conversation.tools.fs_modify_file]
+enable = false
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Modify multiple files in the project's local filesystem."
+
+examples = """
+Replace a string literal:
+```json
+{
+  "path": "src/lib.rs",
+  "patterns": [{"old": "old text", "new": "new text"}],
+  "replace_using_regex": false
+}
+```
+
+Apply multiple replacements in order:
+```json
+{
+  "path": "src/lib.rs",
+  "patterns": [
+    {"old": "foo", "new": "bar"},
+    {"old": "baz", "new": "qux"}
+  ],
+  "replace_using_regex": false
+}
+```
+
+Apply the same replacement to multiple files:
+```json
+{
+  "patterns": [
+    {"old": "old_name", "new": "new_name", "paths": ["src/lib.rs", "src/main.rs", \
+"tests/integration.rs"]}
+  ],
+  "replace_using_regex": false
+}
+```
+
+Apply different replacements to different files:
+```json
+{
+  "patterns": [
+    {"old": "foo", "new": "bar", "paths": ["src/a.rs"]},
+    {"old": "baz", "new": "qux", "paths": ["src/b.rs", "src/c.rs"]}
+  ],
+  "replace_using_regex": false
+}
+```
+
+Use regex with capture groups:
+```json
+{
+  "path": "src/lib.rs",
+  "patterns": [{"old": "fn (\\w+)_old", "new": "fn ${1}_new"}],
+  "replace_using_regex": true
+}
+```
+"""
+
+# questions.apply_changes.target = "assistant"
+questions.apply_changes.answer = true
+
+[conversation.tools.fs_modify_file.style]
+parameters = "jp-tools {{context}} {{tool}}"
+inline_results = "off"
+results_file_link = "off"
+
+[conversation.tools.fs_modify_file.parameters.path]
+type = "string"
+summary = "The path to the file to modify. The path must be relative to the project's root."
+description = """
+Default target file for all patterns. Not required if every pattern specifies \
+its own `paths`.
+"""
+
+[conversation.tools.fs_modify_file.parameters.patterns]
+required = true
+type = "array"
+summary = "One or more patterns to replace in the given files. The patterns are applied in order."
+
+[conversation.tools.fs_modify_file.parameters.patterns.items]
+type = "object"
+properties.old = { type = "string", description = "The string to replace in the file. The string may span multiple lines.", required = true }
+properties.new = { type = "string", description = "The string to replace the `old` with. The string may span multiple lines. If empty, the `old` will be deleted.", required = true }
+properties.paths = { type = "array", description = "File paths to apply this pattern to. Overrides the root-level `path`. Each path must be relative to the project's root.", required = false, items = { type = "string" } }
+
+[conversation.tools.fs_modify_file.parameters.replace_using_regex]
+required = true
+default = false
+type = "boolean"
+summary = "Whether to treat `old` as a regular expression."
+description = """
+If `true`, `old` is treated as a regular expression and the `new` is treated \
+as a replacement string, which may contain capture groups.
+
+If `false`, `old` is treated as a literal string and the `new` is treated as \
+a literal string.
+
+When `true`, replaces all non-overlapping matches in text with the replacement provided.
+
+All instances of `$name` in the replacement string is replaced with the corresponding capture \
+group name.
+
+`name` may be an integer corresponding to the index of the capture group (counted by order of \
+opening parenthesis where `0` is the entire match) or it can be a name (consisting of letters, \
+digits or underscores) corresponding to a named capture group (e.g. `(?<name>exp)`).
+
+If `name` isn't a valid capture group (whether the name doesn't exist or isn't a valid index), \
+then it is replaced with the empty string.
+
+The longest possible name is used. e.g., `$1a` looks up the capture group named `1a` and not the \
+capture group at index `1`. To exert more precise control over the name, use braces, e.g., `${1}a`.
+
+To write a literal `$` use `$$`.
+
+Note that `^` matches start-of-line and `$` matches end-of-line, whereas `\\A` and `\\z` match the \
+start and end of the string, respectively.
+
+`.*` only matches single lines by default. Use `[\\s\\S]*` to match across lines.
+"""

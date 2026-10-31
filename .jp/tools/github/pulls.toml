@@ -1,0 +1,85 @@
+[conversation.tools.github_pulls]
+enable = false
+run = "unattended"
+
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Find one or more pull requests in a GitHub repository. Defaults to dcdpr/jp."
+
+examples = """
+List open pull requests in the current project's repo:
+```json
+{"state": "open"}
+```
+
+List every pull request (open and closed) by leaving `state` unset:
+```json
+{}
+```
+
+Get details for a specific pull request, including the first page of conversation
+comments:
+```json
+{"number": 42}
+```
+
+Fetch a pull request from a different repository:
+```json
+{"repository": "Swatinem/rust-cache", "number": 37}
+```
+
+Walk further into a long comment thread:
+```json
+{"repository": "Swatinem/rust-cache", "number": 37, "page": 2}
+```
+
+To inspect a pull request's actual code changes, use the separate `github_pr_diff`
+tool — `github_pulls` only returns metadata and conversation.
+"""
+
+[conversation.tools.github_pulls.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.github_pulls.parameters.repository]
+type = "string"
+summary = "Repository to read pull requests from, in `owner/repo` form."
+description = """
+If unspecified, defaults to the current project's GitHub repository.
+"""
+
+[conversation.tools.github_pulls.parameters.number]
+type = "integer"
+summary = "Pull request number to get information about."
+description = """
+If unspecified, a single page of pull requests will be returned,
+without the pull request descriptions or comments. Re-run the tool
+with the pull request number to fetch its details and conversation
+comments.
+"""
+
+[conversation.tools.github_pulls.parameters.state]
+type = "string"
+enum = ["open", "closed"]
+summary = "Filter pull requests by their state."
+description = """
+If unspecified, both open and closed pull requests will be returned.
+"""
+
+[conversation.tools.github_pulls.parameters.page]
+type = "integer"
+summary = "1-indexed page to fetch. Defaults to 1."
+description = """
+When `number` is set, selects a page of conversation comments (10 per
+page); the response includes `comments_count` (total) so you can tell
+when the thread is exhausted. Inline review comments are not returned
+by this tool.
+
+When `number` is unset, selects a page of pull requests (100 per page).
+The response does not include a grand total — request the next page and
+stop when fewer than 100 pull requests come back.
+
+The response in `number` mode also exposes `changed_files_count`; use
+`github_pr_diff` to fetch the actual file changes.
+"""

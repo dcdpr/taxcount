@@ -1,0 +1,45 @@
+[conversation.tools.fs_list_files]
+enable = false
+run = "unattended"
+
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "List files in the project's local filesystem."
+
+examples = """
+List all Rust files:
+```json
+{"extensions": ["rs"]}
+```
+
+List files under a specific directory:
+```json
+{"prefixes": ["crates/jp_cli/src"]}
+```
+
+List all files in the project:
+```json
+{}
+```
+"""
+
+[conversation.tools.fs_list_files.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.fs_list_files.parameters.prefixes]
+type = "array"
+items.type = "string"
+summary = "Optional list of path prefixes to filter the results by."
+description = """
+If unspecified, all files in the project will be returned.
+"""
+
+[conversation.tools.fs_list_files.parameters.extensions]
+type = "array"
+items.type = "string"
+summary = "Optional list of file extensions to filter the results by."
+description = """
+If unspecified, all extensions will be returned.
+"""

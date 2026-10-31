@@ -1,0 +1,382 @@
+[[conversation.attachments]]
+type = "cmd"
+path = "sh"
+params.args = ["-c", "cargo metadata --no-deps --format-version=1 | jq -r '.packages[].name' | sort"]
+params.description = "Workspace crate names"
+
+[[assistant.system_prompt_sections]]
+position = 900
+tag = "Project Structure"
+content = '''
+# Knowledge: Project Structure
+
+Here is the structure of the project.
+
+Never let the tail wag the dog.  This project knowledge is a
+descriptive snapshot of where things currently live, not a constraint
+on where they should live.  It must never be a consideration in how to
+refactor or move functionality.  The code and its design decide the
+right shape; this knowledge follows them.  When a refactor moves
+functionality and contradicts what is written here, the code wins and
+this knowledge gets updated -- you do not keep code in an awkward
+place, or decline to move it, merely because a document describes it
+where it is.
+'''
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: crate layout"
+items = [
+    '''
+    TBD
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: the binary"
+items = [
+    '''
+    TBD
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: dependencies"
+items = [
+    '''
+    Runtime deps: TBD
+    ''',
+    '''
+    Dev deps: TBD
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: source modules"
+items = [
+    '''
+    TBD
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: top-level non-source files"
+items = [
+    '''
+    TBD
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: cargo aliases"
+items = [
+    '''
+    TBD
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: the library"
+items = [
+    '''
+    src/lib.rs mirrors all module declarations as pub mod.
+    ''',
+    '''
+    It re-exports many public types for integration tests.
+    ''',
+    '''
+    main.rs and lib.rs are sibling targets with separate module trees
+    that independently declare the same source files.  Both must
+    declare every module referenced via crate:: anywhere in src/.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: Individual Crates"
+items = [
+    '''
+    The project is structured using Cargo.  Read the Cargo.toml for details.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: ignore files"
+items = [
+    '''
+    .gitignore ignores target/ and __pycache__/.
+    ''',
+    '''
+    .ignore (for .jp, ripgrep, and search tools) additionally ignores:
+      - .agentic-shepherd/code-map.md;
+      - .agentic-shepherd/log/;
+      - .git/;
+      - .jp/conversations/; and
+      - .jp/local-conversations/.
+    ''',
+    '''
+    .ignore un-ignores:
+      - target/doc/; and
+      - target/log/.
+    ''',
+    '''
+    .agentic-shepherd/.gitignore ignores /code-map.md and
+    /tmpf-*.git-commit.
+    ''',
+    '''
+    .jp/.gitignore ignores conversations/.
+    ''',
+    '''
+    snapshots/.gitignore ignores *.snap.new.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: snapshots"
+items = [
+    '''
+    snapshots/ holds gargoyle .snap files named
+    test_module__test_name.snap.  .snap.new files are gitignored and
+    must be reviewed via cargo insta review.
+    ''',
+    '''
+    Do not tell the user that a snapshot waits for cargo insta review
+    until you have examined its current state in this turn.  The user
+    can accept snapshots between your turns, so a test result from an
+    earlier turn does not show the current state.
+    ''',
+    '''
+    snapshots/.gitignore ignores *.snap.new, so git status does not
+    show these files.  To find the current state of a snapshot, read
+    the git status of the .snap file, and also list the directory to
+    see if the .snap.new file is on disk.
+    ''',
+    '''
+    The four snapshot states are:
+      - a .snap.new file is on disk, and the review is pending;
+      - the .snap file is modified or staged, with no .snap.new file,
+        and the user completed the review;
+      - the .snap file is untracked, with no .snap.new file, and the
+        user accepted a new snapshot; and
+      - the .snap file is clean, with no .snap.new file, and no review
+        is necessary.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: tests"
+items = [
+    '''
+    Test coverage takes four forms:
+      - unit tests in source;
+      - integration tests in tests/;
+      - benches/; and
+      - batch/fuzz tests in bin/.
+    ''',
+    '''
+    Unit tests live in src/module_name/tests.rs (not inline in the
+    source file).  The source file declares #[cfg(test)] mod tests;
+    at the top.
+    ''',
+    '''
+    tests/ uses a consolidated single-binary pattern at
+    tests/it/main.rs with many test modules and shared test_utils/.
+    ''',
+    '''
+    Integration tests use gargoyle snapshots.  The assertion rules are
+    in the "Assertion Allowlist" section of
+    .agentic-shepherd/doc/patterns/general-deployments/integration-testing-guide.md.
+    Rules for snapshot handling are in
+    .agentic-shepherd/instructions/test-organization.md under
+    "Integration Tests Use Gargoyle Snapshots".
+    ''',
+    '''
+    benches/ provides criterion benchmarks.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: wip commits"
+items = [
+    '''
+    A wip commit is a commit with the full subject line "wip".  It
+    holds work that is not completed, and the commit uses --no-verify
+    to skip git hooks.  A subject with any text after "wip", for
+    example `wip(#638): partial work`, is a usual commit, verified by
+    git hooks.  wip commits are frequently amended and their commit
+    date can precede the content in the commit.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: .agentic-shepherd"
+items = [
+    '''
+    .agentic-shepherd/ is the project management root.
+    ''',
+    '''
+    todos/ holds the issue tracker and design material: context.md
+    (current in-progress notes for a draft commit), todos.md
+    (backlog), done.md (completed), later.md (deferred), spec.md (the
+    design spec), and any roadmap.md (milestones).
+    ''',
+    '''
+    plans/ holds implementation plans.  New plan documents must be
+    written here.
+    ''',
+    '''
+    doc/ holds longer-form documentation about using the agentic-shepherd project management
+    tooling and its coding conventions: checklist-command-yaml.md, scoped-commits.md,
+    rebuild-agent-instructions.md, and patterns/general-deployments/ (error handling, integration
+    testing with gargoyle snapshots, module declaration architecture, plan step references,
+    backporting, and sans-io.txt).
+    ''',
+    '''
+    code-map.md (search index, gitignored) and log/ (gitignored)
+    are generated artifacts.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: .jp"
+items = [
+    '''
+    .jp/ integrates the Jean-Pierre LLM assistant.  config.toml
+    configures inquiry model, tool approval modes, and
+    agentic-shepherd tool definitions.
+    ''',
+    '''
+    .jp/tools/ defines TOML tool specs across cargo/, fs/, git/,
+    github/, unix/, and web/ subdirectories.  These are invoked via
+    the jp-tools binary.
+    ''',
+    '''
+    .jp/config/ splits the rest by kind: knowledge/ holds
+    system-prompt sections such as this one, personas/ holds the
+    persona files, skill/ holds the skill files, and stack/ holds the
+    stack choices.
+    ''',
+    '''
+    .jp/conversations/ holds conversation history (gitignored).
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: .claude"
+items = [
+    '''
+    .claude/ (which only exists if selected as an init option)
+    configures the Claude Code agent: settings.json +
+    settings.local.json (sandbox-protected), statusline.sh, and
+    commands/ with top-level slash commands plus an
+    agentic-shepherd/ subdirectory for issue-management commands.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: bin scripts"
+items = [
+    '''
+    bin/ holds a few Zsh/Bash utility scripts, and Python hook scripts
+    wired into Claude Code (which only exists if selected as an init
+    option) via .claude/settings.json.
+    ''',
+    '''
+    Possible Hook scripts: auto-approve-use-block.py,
+    let-underscore-hook.py, plan-directory-hook.py,
+    rtfm-hook.py, say-hook.py, string-tax-hook.py,
+    sycophancy-hook.py.
+    ''',
+    '''
+    Possible Utility scripts: code-map-refresh-live.zsh +
+    nohup-code-map-refresh.zsh (refresh the gitignored code map),
+    deny-update.sh, fmt-nightly.zsh, gitver.sh.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: documentation"
+items = [
+    '''
+    Library documentation lives in target/doc/ and target/doc/src/.
+    Generate it with `cargo doc-all`.  Always read crate docs there
+    before using a dependency (especially onlyerror, gargoyle-snaps, and
+    onlyargs).
+    ''',
+    '''
+    .agentic-shepherd/doc/ holds scoped-commits.md,
+    checklist-command-yaml.md, and patterns/general-deployments/.
+    ''',
+    '''
+    MANDATORY documents:
+    - before you write code or plans, read
+      target/doc/onlyerror/index.html (the derive(Error) macro DSL) and
+      .agentic-shepherd/doc/patterns/general-deployments/error-handling-principles.md;
+    - before you write an integration test, read
+      .agentic-shepherd/doc/patterns/general-deployments/integration-testing-guide.md
+      (Gargoyle snapshot patterns are in its tests section); and
+    - before you add a module or an integration test, read
+      .agentic-shepherd/doc/patterns/general-deployments/module-declaration-architecture.md
+      (the rules for module declarations in lib.rs and main.rs).
+    ''',
+    '''
+    Project specification is in .agentic-shepherd/todos/spec.md.
+    Plans must be written to .agentic-shepherd/plans/.
+    ''',
+    '''
+    doc/ at top level holds design documents specific to this project.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: example-code"
+items = [
+    '''
+    example-code/ holds reference checkouts of other people's
+    projects, cloned from the URLs listed in example-code/origins.txt.
+    They are read-only study material: no part of example-code/ is a
+    workspace member, and nothing there is built, tested, or edited by
+    this project.
+    ''',
+    '''
+    example-code/.gitignore excludes each clone directory, so
+    origins.txt is the only tracked file.  A clone named in
+    origins.txt may or may not be present on disk; list the directory
+    before assuming.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 930
+title = "Project Structure: anti-patterns"
+items = [
+    '''
+    Never use mod.rs files.  Use the named-file pattern:
+    module_name.rs alongside a module_name/ directory for any
+    children.
+    ''',
+    '''
+    Never use #[path = "..."] attributes on modules.
+    ''',
+    '''
+    Never place test code in the implementation source file.  Unit
+    tests live in src/<module>/tests.rs, declared via
+    #[cfg(test)] mod tests; at the top of the implementation file.
+    ''',
+]

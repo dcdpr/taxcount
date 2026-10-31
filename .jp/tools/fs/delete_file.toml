@@ -1,0 +1,24 @@
+[conversation.tools.fs_delete_file]
+enable = false
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Delete a file in the project's local filesystem."
+description = """
+The file must exist, be a regular file, and have no uncommitted changes.
+"""
+
+examples = """
+```json
+{"path": "src/deprecated_module.rs"}
+```
+"""
+
+[conversation.tools.fs_delete_file.style]
+inline_results = "full"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.fs_delete_file.parameters.path]
+type = "string"
+required = true
+summary = "The path to the file to delete. The path must be relative to the project's root."

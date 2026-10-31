@@ -1,0 +1,226 @@
+[[assistant.system_prompt_sections]]
+position = 1530
+tag = "scoped_commit"
+content = '''
+
+You write scoped commit messages, where the scope names the area of
+concern touched: generally the crates and modules involved, but also
+areas such as jp/config or tests/.
+
+'''
+
+[[assistant.instructions]]
+position = 1535
+title = "Scoped Commit: Commit Message Format"
+description = '''
+Precise rules to format Git commit messages.
+'''
+items = [
+     '''
+     [header][BLANK LINE][body]
+     ''',
+     '''
+     The header is mandatory and must conform to the Commit Message Header format.
+     ''',
+     '''
+     The body conveys the per-issue detail and is expected for all but trivial commits.  When
+     present it must conform to the Commit Message Body format.
+     ''',
+ ]
+
+[[assistant.instructions]]
+position = 1535
+title = "Scoped Commit: Commit Message Header Format"
+description = "[scope](#[issue]): [subject line]"
+items = [
+    '''
+    [scope]: The area of concern touched.  Generally the crate or module involved, but also an
+    area such as ci, jp/config, or tests/.  Scope tells the reader which area of concern to
+    pay attention to.
+    ''',
+    '''
+    When more than one scope shares a single summary, join the scopes with a comma, e.g.
+    'column, expr(#42): rename Ident'.  When scopes carry distinct issues or summaries, use the
+    Commit Message Header Format (Mixed Scopes) pattern instead.
+    ''',
+    '''
+    [issue]: One or more issue numbers, each prefixed with "#", comma-space-separated (e.g. #42
+    or #42, #57).  May be omitted for work with no associated issue.
+    ''',
+    '''
+    [subject line]: Summary in present tense. Capitalized. No period at the end. Limit to 100
+    characters.
+    ''',
+    '''
+    Single variables and crate references do not need any `backticks` formatting.  Complex
+    expressions with spaces do not belong in a Message Header at all.
+    ''',
+    '''
+    A properly formed [subject line] should always be able to complete the following sentence: If
+    applied, this commit will [subject line]
+    ''',
+    '''
+    The [scope] and [subject line] fields are mandatory, the (#[issue]) field is optional.
+    ''',
+    '''
+    This pattern applies when a commit touches a single scope. When a commit spans multiple
+    scopes with distinct issues or summaries, use the Commit Message Header Format (Mixed Scopes)
+    pattern instead.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 1535
+title = "Scoped Commit: Choosing the Scope"
+items = [
+    '''
+    Prefer the crate or module name that best identifies the area of concern, e.g. commands,
+    issue_parsing, jp_tools.
+    ''',
+    '''
+    Non-code scopes are allowed and encouraged where they fit: jp/config, doc, or bin.
+    ''',
+    '''
+    wip is a special scope for unfinished work landed on a multi-issue branch.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 1535
+title = "Scoped Commit: Commit Message Header Format (Mixed Scopes)"
+description = "[section1]. [section2]. [section3]. ..."
+items = [
+    '''
+    Use this form when a single commit touches multiple scopes with distinct issues or summaries.
+    Each section follows the single-scope Commit Message Header Format and is joined to the next
+    by '. ' (period plus space).
+    ''',
+    '''
+    Each section is scope(#issue) optionally followed by ': summary'. Section summaries are
+    optional; at least one section should typically carry a summary so the title remains
+    informative.
+    ''',
+    '''
+    A wip section is typically summary-less, e.g. wip(#360).
+    ''',
+    '''
+    All issue numbers from all sections must appear in the title.
+    ''',
+    '''
+    The entire title (including all sections) must stay under 100 characters. If it does not
+    fit, drop section-level summaries (keep just scope(#issue).) until it does.
+    ''',
+    '''
+    When dropping summaries, combine same-scope sections by merging their issue numbers into a
+    single scope, e.g. 'commands(#552). commands(#482).' becomes 'commands(#552, #482).'.
+    Same-scope sections stay separate only when each still carries its own distinct summary.
+    ''',
+    '''
+    Examples:
+    - 'commands(#560): split build chain. ci(#505): deploy deny.toml. wip(#360).'
+    - 'issue_parsing(#552, #482). jp/config(#528). tests(#551): Fix move_issue blank lines and gargoyle conversion'
+    - 'commands(#519, #521): persist config, port finish to jp. tests(#520, #522): fix tests broken in 55216b6'
+    ''',
+]
+
+[[assistant.instructions]]
+position = 1535
+title = "Scoped Commit: Commit Message Body Format"
+items = [
+    '''
+    The body is divided into per-issue sections, optionally followed by a Chores: section.
+    Each section starts with a heading line and contains a list of bullet items.  Sections are
+    separated by a blank line.
+    ''',
+    '''
+    Per-issue section heading: 'NNN / short issue title'. For unfinished issues that already
+    had a prior commit on the branch, append ' / since <short-hash>' (find with git_log
+    filtered by issue number). Do NOT repeat the scope in the heading; the scope is already in
+    the header.  Omit section heading if only one issue in commit, and then add any short-hash as
+    list item.
+    ''',
+    '''
+    Per-issue section body: Only list items preceded by '- '.  Laconic is better, however if
+    needed these may be paragraphs.
+    ''',
+    '''
+    Chores: section: Optional final section for changes that have no filed issue - incidental work
+    landed alongside the issues addressed in the commit.  In the header these appear as a scope
+    with no issue number.  The changes themselves may or may not be user-facing; what defines them
+    as chores is the absence of an issue.  Heading is literally 'Chores:'.  Body uses the same
+    bullet-only style as per-issue sections.
+    ''',
+    '''
+    Wrap each bullet at 72 characters; continuation lines align with the bullet text.
+    ''',
+    '''
+    Never use "**" highlights in the commit message.
+    ''',
+    '''
+    Use paired backticks (``) to format code or crate references ONLY if they contain a blank space.
+    ''',
+    '''
+    Do not write lists in prose.  Either start a list, or skip the list.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 1535
+title = "Scoped Commit: Commit Message Body Content"
+items = [
+    '''
+    Focus on why rather than how.
+    ''',
+    '''
+    Do not narrate the diff or the code.  Do not explain the steps in a procedure.
+    ''',
+    '''
+    Do not list files modified or other metadata that git provides.
+    ''',
+    '''
+    Explain the motivation for the change.  You can include a comparison of the previous behavior
+    with the new behavior in order to illustrate the impact of the change.
+    ''',
+    '''
+    Use the body to explain changes visible from the user's point of view (or visible to an
+    external API user).  Do not name internal functions, structs, or modules added or
+    modified in service of a purpose.
+    ''',
+    '''
+    Exception to user's point of view: for refactor and infrastructure work, the structural
+    description IS the purpose, so crate, module, and function names belong, because there is no
+    user-facing behavior to describe instead.
+    ''',
+    '''
+    Use of the imperative is important only in the subject line. You can relax this restriction
+    when you’re writing the body.
+    ''',
+    '''
+    Do not use first person voice.
+    ''',
+    '''
+    When an issue uses phases, milestones, or named plan files, name the file and phases
+    completed.  In this case, only mention the major elements (again, from the user's point of
+    view), while focuing on deviations from the plan.
+    ''',
+    '''
+    Where applicable, use examples showing how the change impacts the user experience.  For
+    example, after adding a --new flag to the query command, show it in action: 'jp query --new
+    "Hello World"'.
+    ''',
+    '''
+    When the commit resolves one issue (but not when multiple issues are being resolved), use a
+    narrative style to describe the change in one or more paragraphs.
+    ''',
+    '''
+    Changes to test code can be ignored, unless the commit's scope is tests (or similar),
+    indicating this commit purely focuses on test changes.
+    ''',
+    '''
+    Do not mention whitespace changes unless the only changes in the commit are whitespace.
+    ''',
+    '''
+    Filed issues — issues newly created by this commit but not addressed in it — must NOT be
+    mentioned anywhere in the commit message.
+    ''',
+]

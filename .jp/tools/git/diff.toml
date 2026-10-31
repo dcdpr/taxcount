@@ -1,0 +1,64 @@
+[conversation.tools.git_diff]
+enable = "explicit"
+run = "unattended"
+
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Diff pending changes: staged (index vs HEAD) or unstaged (working tree vs index)."
+description = """
+Returns a per-file summary of pending changes with truncated diffs.
+
+- `status: "staged"` diffs the index against `HEAD` — i.e. what is about to be \
+  committed. **This is the right tool for diffing staged changes against HEAD; \
+  do NOT use `git_diff_commit` for that.**
+- `status: "unstaged"` diffs the working tree against the index.
+
+For inspecting an already-committed revision (a commit hash, `HEAD`, `HEAD~1`), \
+use `git_diff_commit` instead.
+
+Each file's diff is capped at 50 lines. If a file is truncated, use \
+`git_diff_file` with that file in `paths` to see its full diff (and optionally \
+a `pattern` to search within it).
+
+The `paths` parameter on this tool narrows which files appear in the \
+overview but does NOT lift the per-file truncation cap.
+"""
+
+examples = """
+Diff all unstaged changes:
+```json
+{"status": "unstaged"}
+```
+
+Narrow the overview to specific paths:
+```json
+{"status": "unstaged", "paths": ["crates/jp_config/src/conversation/tool.rs"]}
+```
+
+Diff staged changes:
+```json
+{"status": "staged", "paths": ["src/"]}
+```
+"""
+
+[conversation.tools.git_diff.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.git_diff.parameters.paths]
+type = "array"
+items.type = "string"
+summary = "Optional list of paths to restrict the overview to. If omitted, diffs the entire repository. Does NOT bypass per-file truncation — use `git_diff_file` for full per-file diffs."
+
+[conversation.tools.git_diff.parameters.status]
+type = "string"
+enum = ["staged", "unstaged"]
+required = true
+summary = "Which changes to include in the diff."
+description = """
+- `"staged"`: changes in the index that differ from HEAD (HEAD vs index).
+- `"unstaged"`: changes in the working tree that differ from the index (index vs working tree).
+
+A staged change will NOT appear in the `"unstaged"` diff and vice versa.
+"""

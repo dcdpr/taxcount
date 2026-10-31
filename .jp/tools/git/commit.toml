@@ -1,0 +1,19 @@
+[conversation.tools.git_commit]
+enable = "explicit"
+run = "ask"
+style.inline_results = "full"
+
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Commit the staged changes to the local git repository."
+
+examples = """
+```json
+{"message": "feat: add lazy loading for tool descriptions\n\nSplit tool descriptions into summary and detail fields."}
+```
+"""
+
+[conversation.tools.git_commit.parameters.message]
+type = "string"
+required = true
+summary = "The commit message to use. Can be multiline."

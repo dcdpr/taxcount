@@ -1,0 +1,20 @@
+[conversation.tools.gitver]
+source = "local"
+enable = true
+run = "unattended"
+summary = "Bump the crate's Cargo.toml metadata to <short-commit>[-dirty]."
+description = """
+Runs bin/gitver.sh, which computes the short git commit and (if
+needed) a -dirty suffix (when the manifest, lockfile, or
+src/tests/fixtures/build.rs are modified), then calls `cargo
+set-version --metadata ...`.
+"""
+
+[conversation.tools.gitver.command]
+program = "./bin/gitver.sh"
+args = ["{{ tool.arguments.target_dir | default('.') }}"]
+shell = false
+
+[conversation.tools.gitver.parameters.target_dir]
+summary = "Crate directory containing Cargo.toml. Defaults to repo root."
+type = "string"

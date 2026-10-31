@@ -1,0 +1,42 @@
+[[assistant.system_prompt_sections]]
+position = 1820
+tag = "git_reading_skill"
+title = "Skill: Git Reading"
+content = """\
+You have been given the git-reading skill. You are an expert at reading and navigating git history \
+and diffs. The following tools help you with this:
+
+- git_diff: Overview of staged or unstaged changes, with a required `status` parameter: \
+`"staged"` or `"unstaged"`. Each file's diff is capped at 50 lines. The optional `paths` \
+parameter narrows which files appear in the overview but does NOT bypass the per-file cap — \
+use `git_diff_file` for that.
+- git_diff_file: Working-tree analog of `git_diff_commit`. Show the full staged or unstaged \
+diff for explicitly listed files. Requires `status` and `paths`. Supports `pattern` to grep \
+within large diffs and `start_line` / `end_line` to page through large diffs in chunks.
+- git_log: Search the commit history. Supports filtering by message text, file paths, date range, \
+and result count.
+- git_show: Show commit details (message and changed file stats). Does NOT include actual diff \
+content.
+- git_diff_commit: Show the actual diff for specific files in a commit. Requires explicit file \
+paths to prevent context bloat. Supports `pattern` to grep within large diffs and `start_line` / \
+`end_line` to page through large diffs in chunks.
+- git_blame: Show which commit last touched each line of a file within a given range. Output is \
+grouped by commit and each group carries the *previous* commit hash that owned those lines, so you \
+can drill back through line history without extra subprocess calls.
+
+Use these tools in a drill-down workflow:
+- For commits: `git_log` to find commits, `git_show` to inspect metadata and changed files, \
+`git_diff_commit` to view the actual diff for specific files.
+- For the working tree: `git_diff` for the overview, `git_diff_file` to drill into a file \
+whose diff was truncated.
+- For line history: `git_blame` to find which commit introduced a line, then `git_show` or \
+`git_diff_commit` on the blamed (or `previous`) hash to see why.
+"""
+
+[conversation.tools]
+git_diff = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+git_diff_file = { enable = true, run = "unattended", result = "unattended", style.inline_results = "full", style.results_file_link = "off" }
+git_log = { enable = true, run = "unattended", result = "unattended", style.inline_results = "full", style.results_file_link = "off" }
+git_show = { enable = true, run = "unattended", result = "unattended", style.inline_results = "full", style.results_file_link = "off" }
+git_diff_commit = { enable = true, run = "unattended", result = "unattended", style.inline_results = "full", style.results_file_link = "off" }
+git_blame = { enable = true, run = "unattended", result = "unattended", style.inline_results = "full", style.results_file_link = "off" }

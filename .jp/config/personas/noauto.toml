@@ -1,0 +1,42 @@
+# Every state-changing tool requires approval before it
+# runs.
+#
+# Read-only and check tools (shepherd_run, cargo_check/test/expand,
+# clippy, docs, tests, git diffs/log/blame, github readers, etc.) keep
+# running unattended.
+#
+# Regarding the intuition of the format field, you want to be able to
+# see the diff without a question, so you run it "unattended".  You
+# are trusting the tool enough to show you this output.  This is a
+# separate invocation from the mutating run.
+
+extends = [
+    "../skill/immutable-snapshots.toml",
+]
+
+[conversation.tools]
+
+# Local files: source, manifests, working tree.
+fs_create_file.format = "unattended"
+fs_create_file.run = "ask"
+fs_modify_file.format = "unattended"
+fs_modify_file.run = "ask"
+fs_move_file.run = "ask"
+fs_delete_file.run = "ask"
+cargo_format.run = "ask"
+gitver.run = "ask"
+
+# Git index / repo.
+git_add_all.run = "ask"
+git_add_intent.run = "ask"
+git_stage_patch.run = "ask"
+git_stage_patch_lines.run = "ask"
+git_unstage.run = "ask"
+git_commit.run = "ask"
+
+# GitHub remote.
+github_create_issue_bug.run = "ask"
+github_create_issue_enhancement.run = "ask"
+github_create_issue_rfd_tracking.run = "ask"
+github_pr_review_add_comment.run = "ask"
+github_pr_review_add_reply.run = "ask"

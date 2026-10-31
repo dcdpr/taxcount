@@ -1,0 +1,19 @@
+config_key = "Rust"
+flag_names = [
+    "rust_code",
+    "any_code",
+    "is_agentic_shepherd",
+    "proof_of_instruction",
+    "install_git_hooks",
+]
+
+[variables]
+project_description = "TBD"
+project_name = "Generic Rust Project"
+
+[flags]
+any_code = true
+install_git_hooks = true
+proof_of_instruction = false
+rust_code = true
+

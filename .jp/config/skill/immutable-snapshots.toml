@@ -1,0 +1,59 @@
+# Make `snapshots/` read-only for the assistant's mutating filesystem tools.
+#
+# `access.fs` is an ALLOW-LIST, not a block-list: the moment a tool gets any
+# rule it switches to default-deny for the whole workspace. So each tool needs
+# a broad root grant (read + write everywhere) plus a more specific carve-out
+# for `snapshots`, which grants read but no write. Rule matching is
+# longest-prefix-wins and component-aware, so the `snapshots` rule wins for
+# anything under snapshots/ and won't catch siblings like `snapshots_notes/`.
+#
+# `access` only exists on local tools, and the global `tools."*"` defaults
+# block carries no `access` field, so this has to be repeated per mutating
+# tool.
+
+[[assistant.system_prompt_sections]]
+position = 1900
+tag = "immutable_snapshots_skill"
+title = "Skill: Immutable Snapshots"
+content = '''
+snapshots/ must never be edited directly; the user will review with
+`cargo insta`. fs_modify_file, fs_create_file, fs_delete_file, and
+fs_move_file all carry read-only access to snapshots/ while this skill
+is active.
+'''
+
+[[conversation.tools.fs_modify_file.access.fs]]
+path = "."
+read = true
+write = true
+
+[[conversation.tools.fs_modify_file.access.fs]]
+path = "snapshots"
+read = true
+
+[[conversation.tools.fs_create_file.access.fs]]
+path = "."
+read = true
+write = true
+
+[[conversation.tools.fs_create_file.access.fs]]
+path = "snapshots"
+read = true
+
+[[conversation.tools.fs_delete_file.access.fs]]
+path = "."
+read = true
+write = true
+
+[[conversation.tools.fs_delete_file.access.fs]]
+path = "snapshots"
+read = true
+
+[[conversation.tools.fs_move_file.access.fs]]
+path = "."
+read = true
+write = true
+
+[[conversation.tools.fs_move_file.access.fs]]
+path = "snapshots"
+read = true

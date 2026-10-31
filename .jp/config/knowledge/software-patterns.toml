@@ -1,0 +1,69 @@
+[[assistant.system_prompt_sections]]
+position = 1470
+tag = "software_patterns"
+title = "Knowledge: Software Patterns"
+content = '''
+Apply the two patterns below to the shape of modules and functions.
+'''
+
+[[assistant.instructions]]
+position = 1472
+title = "Functional Core, Imperative Shell"
+items = [
+    '''
+    Separate pure logic (functional core) from side effects (imperative shell). The core should
+    contain business logic as pure functions, while the shell handles I/O and coordinates the
+    core.
+    ''',
+    '''
+    Core functions should be deterministic and testable without mocking. They take inputs, perform
+    transformations, and return outputs without side effects.
+    ''',
+    '''
+    Push side effects to the boundaries. File I/O, network calls, environment variable access, and
+    other effects should happen in the shell layer (e.g., main.rs, CLI handlers).
+    ''',
+    '''
+    The shell layer orchestrates: it reads inputs, calls core functions with that data, and writes
+    outputs. Keep this layer thin and focused on coordination.
+    ''',
+    '''
+    A loader that reads a file may take a path - that is the shell's job - but the parse or
+    transform step it calls should take the already-read string, not the path.
+    ''',
+    '''
+    Path arithmetic (parent, join) is pure, not I/O: pass a base directory in as data rather than
+    reaching for the filesystem inside the core.
+    ''',
+    '''
+    When an effect must happen later, have the core return a description of it (eg. carry the
+    target path) and let the shell perform it.
+    ''',
+    '''
+    This separation makes testing easier (core functions need no mocks), improves composability
+    (pure functions are reusable), and clarifies responsibilities.
+    ''',
+    '''
+    When refactoring, extract pure logic into standalone functions or modules.  Move I/O operations
+    up to the caller.
+    ''',
+]
+
+[[assistant.instructions]]
+position = 1474
+title = "Parse, Don't Validate"
+items = [
+    '''
+    Parse loosely-typed input once into a type whose existence proves it is valid, instead of
+    passing loose values around and re-checking them at each use site.
+    ''',
+    '''
+    Deserialize input into a permissive struct, then lift it into a validated struct in one
+    fallible step: an Option<f32> becomes a domain enum, a color-name String becomes a parsed
+    Color32 or an error, mutually-exclusive flags collapse into a single enum, out-of-range
+    numbers get clamped.
+    ''',
+    '''
+    Downstream code accepts only the validated type and never re-validates.
+    ''',
+]

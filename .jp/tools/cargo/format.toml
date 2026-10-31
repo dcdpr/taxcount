@@ -1,0 +1,15 @@
+[conversation.tools.cargo_format]
+enable = false
+run = "unattended"
+source = "local"
+description = "run `cargo fmt --all`"
+
+[conversation.tools.cargo_format.command]
+program = "cargo"
+args = ["fmt", "--all"]
+shell = false
+
+[conversation.tools.cargo_format.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"

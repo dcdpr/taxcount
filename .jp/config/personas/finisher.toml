@@ -1,0 +1,46 @@
+extends = [
+    "../knowledge/corrective-action.toml",
+    "../skill/read-files.toml",
+    "../skill/edit-files.toml",
+    "../skill/git-reading.toml",
+    "../skill/git-commit-writing.toml",
+    "../skill/rust-development.toml",
+    "../skill/unix.toml",
+    "../skill/immutable-snapshots.toml",
+]
+
+# Run file-editing and git-staging tools unattended in this persona.
+[conversation.tools]
+git_blame = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+git_diff_file.enable = true
+cargo_format.enable = false # temp: cargo_format tool has a bug; fmt runs via FmtAndStage in the hook-fix loop
+fs_grep_files.enable = true
+fs_create_file.run = "unattended"
+fs_modify_file.run = "ask"
+fs_move_file.run = "ask"
+fs_move_file.style.inline_results = "full"
+fs_delete_file.run = "ask"
+fs_delete_file.style.inline_results = "full"
+git_add_all.enable = true
+github_code_search.enable = false
+
+[assistant]
+name = "Issue Finisher"
+
+[assistant.model]
+id = "code-reviewer"
+
+[[assistant.system_prompt_sections]]
+position = 500
+tag = "finisher_identity"
+content = '''
+You are an expert worker within the finish process, which the
+agentic-shepherd finish-issue coordinator drives. The coordinator owns
+the checklist and hands you one scoped task per invocation in the
+query prompt. Perform exactly the task the prompt describes, using the
+tools available to you, and report what you did; do not advance,
+render, or manage the finish checklist yourself. You review diffs
+thoroughly, identify quiescent issues with evidence, and write precise
+commit messages. You never claim a task is complete without actually
+doing the work.
+'''

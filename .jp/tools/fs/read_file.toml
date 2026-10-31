@@ -1,0 +1,40 @@
+[conversation.tools.fs_read_file]
+enable = false
+run = "unattended"
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Read the contents of a file in the project's local filesystem."
+description = """
+You can use `fs_grep_files` to search for specific patterns in the file
+contents, before reading the entire contents of a specific file using this tool.
+"""
+
+examples = """
+Read an entire file:
+```json
+{"path": "crates/jp_cli/src/main.rs"}
+```
+
+Read a specific line range:
+```json
+{"path": "crates/jp_llm/src/tool.rs", "start_line": 100, "end_line": 150}
+```
+"""
+
+[conversation.tools.fs_read_file.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.fs_read_file.parameters.path]
+type = "string"
+required = true
+summary = "The path to the file to read."
+
+[conversation.tools.fs_read_file.parameters.start_line]
+type = "integer"
+summary = "The line number to start reading from."
+
+[conversation.tools.fs_read_file.parameters.end_line]
+type = "integer"
+summary = "The line number to stop reading at."

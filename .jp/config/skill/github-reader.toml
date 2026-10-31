@@ -1,0 +1,28 @@
+[[assistant.system_prompt_sections]]
+position = 1930
+tag = "github_reader_skill"
+title = "Skill: GitHub Reader"
+content = """\
+You have been given the GitHub reader skill. You can now use the GitHub API to search for issues \
+and pull requests, and to read files from the project's repository. This is a read-only skill — \
+you can browse but not modify GitHub state.
+
+The following tools help you with this:
+
+- github_code_search: Search through the project's codebase.
+- github_issues: Search through the project's issues.
+- github_pulls: Search through the project's pull requests (metadata and conversation).
+- github_pr_diff: Inspect the files changed in a pull request.
+- github_pr_commits: List the commits that make up a pull request.
+- github_commit: Read a single commit's metadata and changed files by sha, branch, or tag.
+- github_read_file: Read the contents of a file in the project's repository.
+"""
+
+[conversation.tools]
+github_code_search = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+github_issues = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+github_pulls = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+github_pr_diff = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+github_pr_commits = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+github_commit = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }
+github_read_file = { enable = true, run = "unattended", result = "unattended", style.inline_results = "off", style.results_file_link = "off" }

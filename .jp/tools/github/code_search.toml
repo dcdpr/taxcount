@@ -1,0 +1,57 @@
+[conversation.tools.github_code_search]
+enable = false
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Find code matching a query in any GitHub repository."
+description = """
+This tool returns a list of matched files, to fetch the actual code of a
+file, use the `github_read_file` tool.
+
+NOTE: Code search always searches the repository's default branch (usually
+`main`), it is not possible to search in a specific branch or tag.
+"""
+
+examples = """
+Search for a symbol in the current repo:
+```json
+{"query": "symbol:BuiltinRegistry language:rust"}
+```
+
+Search in another repository:
+```json
+{"query": "json in:file filename:package.json NOT path:tests/", "repository": "denoland/deno"}
+```
+"""
+
+[conversation.tools.github_code_search.style]
+inline_results = "off"
+results_file_link = "off"
+parameters = "function_call"
+
+[conversation.tools.github_code_search.parameters.repository]
+type = "string"
+summary = "Repository to search for code."
+description = """
+If unspecified, it defaults to the current project's GitHub repository.
+"""
+
+[conversation.tools.github_code_search.parameters.query]
+type = "string"
+required = true
+summary = "Search query to find code."
+description = '''
+GitHub code-search supports:
+
+- Bare terms (`http-push`) and quoted phrases (`"sparse index"`)
+- Boolean ops: implicit AND, `OR`, `NOT`, parentheses
+- Qualifiers: `language:rust`, `path:/src/**/*.rs`, `symbol:MyFunc`,
+  `in:file`, `in:path`, `filename:Cargo.toml`, `extension:rs`,
+  `size:>10k`
+- Regex – wrap in `/.../` (`/^impl.*Display/`); escape quotes/backslashes (`\"`, `\\`)
+- You must include at least one term when using qualifiers (e.g. `helper language:go`)
+- You can't use the following wildcard characters as part of your
+  search query: . , : ; / \ ` ' " = * ! ? # $ & + ^ | ~ < > ( ) { } [
+  ] @. The search will simply ignore these symbols.
+
+Example: `json in:file filename:package.json NOT path:tests/
+'''

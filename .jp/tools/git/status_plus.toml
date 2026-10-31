@@ -1,0 +1,7 @@
+[conversation.tools.git_status_plus]
+enable = true
+run = "unattended"
+source = "local"
+command = { program = "echo status: && git status && echo branches: && git --no-pager branch --list && echo stashes: && git stash list", shell = true }
+summary = "git status, git branches, git stashes"
+style = { inline_results = "full", results_file_link = "off", parameters = "off" }

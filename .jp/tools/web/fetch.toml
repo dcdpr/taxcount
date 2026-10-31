@@ -1,0 +1,70 @@
+[conversation.tools.web_fetch]
+enable = false
+source = "local"
+command = "jp-tools {{context}} {{tool}}"
+summary = "Fetch the contents of a web page over HTTP(S)."
+
+examples = """
+```json
+{"url": "https://docs.rs/tokio/latest/tokio/"}
+```
+```json
+{"url": "https://docs.rs/tokio/latest/tokio/", "list_sections": true}
+```
+```json
+{"url": "https://docs.rs/tokio/latest/tokio/", "sections": ["modules", "macros"]}
+```
+"""
+
+# Fetch strategy configuration.
+#
+# The tool tries the markdown variant of a URL (`{url}.md`) before falling back
+# to HTML. This works automatically for Mintlify, GitBook, Fumadocs, and similar
+# doc platforms that publish a markdown twin for every page.
+#
+# `strategy`: default for all requests. One of:
+#   - "auto"     Try `.md` first; fall back to HTML on failure. (default)
+#   - "markdown" Fetch only the `.md` variant; error if unavailable.
+#   - "html"     Fetch HTML directly, skipping the `.md` probe.
+#
+# `domains`: per-host overrides. Keys are hostnames; values are strategy
+# strings. Supported key patterns:
+#   - exact match, e.g. "docs.anthropic.com"
+#   - suffix wildcard, e.g. "*.mintlify.app" (matches the apex too)
+# The first matching rule wins.
+options.strategy = "auto"
+options.domains."github.com" = "html" # no .md convention on github.com
+options.domains."docs.rs" = "html" # already well-structured rustdoc HTML
+options.domains."crates.io" = "html"
+
+[conversation.tools.web_fetch.style]
+parameters = "function_call"
+inline_results = "off"
+results_file_link = "full"
+
+[conversation.tools.web_fetch.parameters.url]
+type = "string"
+required = true
+summary = "The URL of the web page to fetch."
+
+[conversation.tools.web_fetch.parameters.list_sections]
+type = "boolean"
+required = false
+summary = """return a compact listing of all anchored sections on the page (headings and definition-list terms)"""
+description = """\
+Each entry includes the section's anchor ID, level, title, and a short content preview. Use the \
+anchor IDs with the `sections` parameter to fetch specific sections. Works for both HTML and \
+markdown sources; HTML also surfaces AsciiDoctor-style `<dt>` glossary terms (e.g. git's manpages).\
+"""
+
+[conversation.tools.web_fetch.parameters.sections]
+type = "array"
+required = false
+items.type = "string"
+summary = "List of section anchor IDs to fetch."
+description = """\
+Only the content under those anchors will be returned, significantly reducing output size. Use \
+`list_sections` first to discover available IDs. For headings, IDs are consistent across markdown \
+and HTML fetches (GitHub-style heading slugs); for HTML definition-list terms the ID is whatever \
+the page exposes (typically a permalink anchor).\
+"""

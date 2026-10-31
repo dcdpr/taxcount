@@ -1,0 +1,21 @@
+[[assistant.system_prompt_sections]]
+position = 920
+tag = "Project Conventions: Pedantic Proof of Instruction"
+content = '''
+  - Code-like Edits are any code in src/ as well as edits to plans
+    (that would change code), tests/, fixtures/, tooling crates, bin/,
+    and other code broadly considered.
+
+  - Before the first Code-like Edit in any session, state in the reply
+    which project patterns govern that code and confirm which
+    mandatory docs were read this session.
+
+  - When SE-DCD (see system prompt tag "simple_english") is available,
+    it is a mandatory pattern that must be included.
+
+  - Do not make this first edit before stating these patterns and
+    listing the docs.
+
+  - Second and subsequent edits do not need this declaration.
+
+'''
