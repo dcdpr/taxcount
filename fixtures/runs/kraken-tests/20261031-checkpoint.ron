@@ -1,6 +1,6 @@
 (
     header: (
-        time: "2026-10-31 15:10:19",
+        time: "2026-10-31 17:07:24",
         semver: "3.0.0",
         gitver: (
             map: {},
@@ -864,10 +864,10 @@
             "2024-08-05T04:03:37Z": (
                 worksheet_name: "ledgers",
                 transactions: {
-                    "804188-76165-f1e450": (
+                    "4252a6-5fe42-8c2b9b": (
                         deq: [
                             (
-                                balance: Eth(("0.0346500000")),
+                                balance: Eth(("0.0315000000")),
                                 origin: Bucket((
                                     synthetic_id: "8cad6c-f1904-e1016b",
                                     time: "2024-08-01T08:09:43Z",
@@ -877,10 +877,10 @@
                             ),
                         ],
                     ),
-                    "4252a6-5fe42-8c2b9b": (
+                    "804188-76165-f1e450": (
                         deq: [
                             (
-                                balance: Eth(("0.0315000000")),
+                                balance: Eth(("0.0346500000")),
                                 origin: Bucket((
                                     synthetic_id: "8cad6c-f1904-e1016b",
                                     time: "2024-08-01T08:09:43Z",

@@ -538,9 +538,6 @@ impl CapGainsWorksheet {
                 gain_matrix.trade_gain += bona_fide.net_gain;
             }
             GainTerm::Short { us, bona_fide } => {
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.us_short.trade_proceeds += proceeds;
-                }
                 gain_matrix.us_short.trade_basis += us.basis;
                 gain_matrix.us_short.trade_gain += us.net_gain;
 
@@ -548,6 +545,9 @@ impl CapGainsWorksheet {
                     .bona_fide_short
                     .get_or_insert_with(Default::default);
 
+                if let Some(proceeds) = proceeds {
+                    gain_matrix.trade_proceeds += proceeds;
+                }
                 gain_matrix.trade_basis += bona_fide.basis;
                 gain_matrix.trade_gain += bona_fide.net_gain;
             }
@@ -570,9 +570,6 @@ impl CapGainsWorksheet {
                 gain_matrix.trade_gain += bona_fide.net_gain;
             }
             GainTerm::Long { us, bona_fide } => {
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.us_long.trade_proceeds += proceeds;
-                }
                 gain_matrix.us_long.trade_basis += us.basis;
                 gain_matrix.us_long.trade_gain += us.net_gain;
 
@@ -580,6 +577,9 @@ impl CapGainsWorksheet {
                     .bona_fide_long
                     .get_or_insert_with(Default::default);
 
+                if let Some(proceeds) = proceeds {
+                    gain_matrix.trade_proceeds += proceeds;
+                }
                 gain_matrix.trade_basis += bona_fide.basis;
                 gain_matrix.trade_gain += bona_fide.net_gain;
             }
