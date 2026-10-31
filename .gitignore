@@ -6,5 +6,4 @@ runs/electrum-testnet-walletonly/
 runs/ledgerlive-testnet/
 runs/mock-testnet/
 tools/ohlc-ness/raw-data/
-.jp/
-.agentic-shepherd/
+temporary-questions/
