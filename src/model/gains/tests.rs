@@ -47,12 +47,8 @@ fn pr_statement24_dates_from_fees_only() {
     assert_eq!(dates.lt_latest_sold, None);
 }
 
-/// Regression test: a split gain (basis before the move date, sale after) must book its proceeds to
-/// the bona fide (Non-US) `trade_proceeds` cell, not the US cell. The PR Statement-24 "Market
-/// Value" (column B) is derived as `sale_price - pr_gain`, which equals the value at the move date
-/// only if the sale price includes the split trade's full proceeds.
 #[test]
-fn split_gain_proceeds_book_to_bona_fide_cell() {
+fn test_regression_bona_fide_proceeds() {
     let worksheet = CapGainsWorksheet {
         worksheet: vec![CapGainsWorksheetRow {
             event_date: Utc.with_ymd_and_hms(2024, 6, 1, 0, 0, 0).unwrap(),
@@ -71,13 +67,13 @@ fn split_gain_proceeds_book_to_bona_fide_cell() {
                         basis: usd(100),
                         basis_date: Utc.with_ymd_and_hms(2020, 1, 1, 0, 0, 0).unwrap(),
                         basis_synthetic_id: String::new(),
-                        net_gain: usd(200), // value at move date (300) - basis (100)
+                        net_gain: usd(200),
                     },
                     bona_fide: GainPortion {
-                        basis: usd(300), // value at move date
+                        basis: usd(300),
                         basis_date: Utc.with_ymd_and_hms(2024, 2, 24, 0, 0, 0).unwrap(),
                         basis_synthetic_id: String::new(),
-                        net_gain: usd(700), // proceeds (1000) - value at move date (300)
+                        net_gain: usd(700),
                     },
                 },
             }],
@@ -86,14 +82,12 @@ fn split_gain_proceeds_book_to_bona_fide_cell() {
 
     let sums = worksheet.sums();
 
-    // The split trade's full proceeds book to the bona fide cell...
     let bona_fide = sums
         .gain_matrix
         .bona_fide_short
         .expect("bona fide short-term cell");
     assert_eq!(bona_fide.trade_proceeds, usd(1000));
     assert_eq!(bona_fide.trade_basis, usd(300));
-    // ...while the US cell receives basis and gain but no proceeds.
     assert_eq!(sums.gain_matrix.us_short.trade_proceeds, usd(0));
     assert_eq!(sums.gain_matrix.us_short.trade_basis, usd(100));
 }
