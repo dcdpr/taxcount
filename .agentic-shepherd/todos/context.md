@@ -52,8 +52,8 @@
       trade_basis and net_gain to trade_gain. As a result, trade_gain is more than trade_proceeds
       minus trade_basis, by the sum of the payment-time values that sums() did not add to a row.
     - The third problem is the "Gain" row. sums() gets it from apply_interest_expenses(), which
-      gives trade_gain plus position_proceeds minus position_fees_min. The capital gain of a column
-      is trade_gain plus position_proceeds, before a deduction.
+      gives trade_gain plus position_proceeds minus position_fees_min. For the capital gain of the
+      column, the "Gain" row must contain trade_gain plus position_proceeds.
     - The fixture fixtures/runs/kraken-tests/20261031-ledgers-sums.csv includes the three problems.
       In "US Short Term", "Gain" 8414.2635 minus ("Trade Proceeds" 4361.3335 minus "Trade Basis"
       8592.0345) is 12644.9645. In the event-details CSV, the sixteen "Basis (Non-US)" values on
