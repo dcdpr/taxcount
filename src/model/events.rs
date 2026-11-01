@@ -84,7 +84,7 @@ pub(crate) enum EventAtom {
         net_gain: GainTerm,         // Columns E-...
 
         /// True when the fee offsets the trade atoms' proceeds on the same ledger row as the
-        /// outgoing amount. Only then do the fee's proceeds book into the trade cells.
+        /// outgoing amount. Only then do the fee's proceeds count in the trade cells.
         reduces_proceeds: bool,
 
         /// The txid of the ledger row that paid this fee, when it is not the event's own row.
@@ -411,7 +411,7 @@ impl Event {
     ///
     /// Trade fees offset the trade atoms' proceeds: the trade atoms' and fee atoms' proceeds must
     /// sum to the event's total proceeds. The fee atoms added after `start` are marked with
-    /// `reduces_proceeds`, so their proceeds book into the trade cells.
+    /// `reduces_proceeds`, so their proceeds count in the trade cells.
     pub(crate) fn reduce_trade_proceeds(&mut self, start: usize, fee_value: UsdAmount) {
         if fee_value == UsdAmount::default() {
             return;
@@ -483,7 +483,7 @@ impl Event {
                 EventAtom::Fee {
                     reduces_proceeds, ..
                 } => {
-                    // This fee atom's proceeds book into the trade cells: they offset the trade
+                    // This fee atom's proceeds count in the trade cells: they offset the trade
                     // atoms' proceeds reduced above.
                     *reduces_proceeds = true;
                 }

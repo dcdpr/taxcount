@@ -1938,7 +1938,7 @@ mod tests {
     // (TODO: income reporting is implemented but not tested yet.)
     //
     // Taxable events for capital gains only occur on outgoing assets. A fee is a separate taxable
-    // event on the fee coin itself: the fee is booked at its definitional or market value when
+    // event on the fee coin itself: the fee is valued at its definitional or market value when
     // paid, against the cost basis of the splits that paid it. Some examples of when a capital gain
     // occurs:
     //
@@ -2088,7 +2088,7 @@ mod tests {
         );
 
         // The event has two atoms: the trade atom (0.1 BTC) and the fee atom (0.0002 BTC).
-        // The trade atom's proceeds are reduced by the fee value, and the fee atom is booked at
+        // The trade atom's proceeds are reduced by the fee value, and the fee atom is valued at
         // the event's definitional rate.
         assert_eq!(event.event_details.len(), 2);
         match &event.event_details[0] {
@@ -2457,7 +2457,7 @@ mod tests {
         let mut actual = state.match_one_tx(&Rc::from("example-worksheet"), tx, &mut args);
         assert_eq!(actual.len(), 1);
         let actual = actual.remove(0).unwrap();
-        // The move has one atom: the fee atom (0.03 BTC), booked at the market rate.
+        // The move has one atom: the fee atom (0.03 BTC), valued at the market rate.
         assert_eq!(actual.event_details.len(), 1);
         match &actual.event_details[0] {
             EventAtom::Fee {

@@ -28,7 +28,33 @@ position = 930
 title = "Project Structure: crate layout"
 items = [
     '''
-    TBD
+    The root Cargo.toml is the taxcount package and also the workspace
+    root.  The workspace members are:
+      - crates/esploda, an Esplora API client that is sans-io, with an
+        optional bitcoind feature;
+      - crates/fett, a concurrent map that calculates each value one
+        time and then keeps it;
+      - crates/gitver, a build-time library that records the git hashes
+        of the source files;
+      - tools/bootstrap-checkpoint, a CLI that writes a first
+        checkpoint file from a bootstrap CSV;
+      - tools/kraken-export-fix, a CLI that corrects the running
+        balances in an edited Kraken ledger export;
+      - tools/ohlc-ness, a CLI that downloads exchange rates and
+        writes the exchange rates database; and
+      - tools/query-exchange-rates, a CLI that reads the exchange
+        rates database.
+    ''',
+    '''
+    The dependency direction is one way.  The taxcount package depends
+    on esploda, fett, and gitver.  Each tools/ crate depends on the
+    taxcount library with path = "../../".  The crates/ members do not
+    depend on taxcount.
+    ''',
+    '''
+    Each crate has edition 2021 and license MPL-2.0.  The root package
+    has rust-version 1.93.0, publish = false, and
+    [lints.rust] unsafe_code = "forbid".
     ''',
 ]
 
@@ -37,7 +63,11 @@ position = 930
 title = "Project Structure: the binary"
 items = [
     '''
-    TBD
+    src/main.rs is the taxcount binary.  It parses struct Args with
+    onlyargs_derive, then run() loads a checkpoint, reads Kraken and
+    wallet CSVs, resolves wallet rows against bitcoind or Esplora,
+    calls State::resolve() and CheckList::execute(), and writes the
+    worksheet CSVs and the output checkpoint.
     ''',
 ]
 
@@ -46,10 +76,15 @@ position = 930
 title = "Project Structure: dependencies"
 items = [
     '''
-    Runtime deps: TBD
+    Runtime deps: bdk, miniscript, esploda, fett, gitver, chrono, csv,
+    ron, serde, serde_json, rust_decimal, onlyargs, onlyargs_derive,
+    thiserror, error-iter, tracing, tracing-subscriber, ureq, rayon,
+    parking_lot, directories, is-terminal, base64, and log (optional,
+    for the optimize feature).
     ''',
     '''
-    Dev deps: TBD
+    Dev deps: arbtest, similar-asserts, tracing-log, tracing-test, and
+    serde_json.  Build dep: gitver.  Features: default = optimize + tls.
     ''',
 ]
 
@@ -58,7 +93,15 @@ position = 930
 title = "Project Structure: source modules"
 items = [
     '''
-    TBD
+    The purpose of each top module in src/ is:
+      - basis, FIFO cost-basis tracking with PoolAsset, and
+        State::resolve() in basis/split.rs;
+      - model, the data types: State, Event, LedgerParsed, the gains
+        worksheet, amounts, and exchange rates;
+      - imports, the CSV readers for Kraken, wallets, and tx tags;
+      - client, the memo-cached Bitcoin backends;
+      - util, the FIFO and the year checks; and
+      - errors, re-exports of every error type.
     ''',
 ]
 
@@ -67,7 +110,15 @@ position = 930
 title = "Project Structure: top-level non-source files"
 items = [
     '''
-    TBD
+    The purpose of each top-level directory is:
+      - references/, input data for the bin/ run scripts and the unit
+        tests, with the exchange rates database in
+        references/exchange-rates-db/;
+      - fixtures/, test data: Kraken fee scenarios, MockClient RON
+        files, and saved run output for comparison;
+      - runs/, gitignored output of the bin/ run scripts;
+      - doc/, design documents; and
+      - supply-chain/, the cargo-vet state.
     ''',
 ]
 
@@ -76,7 +127,20 @@ position = 930
 title = "Project Structure: cargo aliases"
 items = [
     '''
-    TBD
+    The aliases in .cargo/config.toml are:
+      - clippy-all and clippy-all-update-crates, workspace clippy with
+        --deny warnings;
+      - doc-all and doc-all-update-crates, workspace docs with private
+        items;
+      - test-all, test-ignored, and test-all-update-crates, workspace
+        tests with --no-fail-fast;
+      - deny-check-offline, deny-check-update, deny-init, and
+        deny-install, cargo-deny;
+      - ir, insta-snapshots-unused-find, and
+        insta-snapshots-unused-delete, cargo insta (the workspace has
+        no insta dependency); and
+      - crit, cargo bench --bench parse_issue (the workspace has no
+        such bench).
     ''',
 ]
 
@@ -85,24 +149,11 @@ position = 930
 title = "Project Structure: the library"
 items = [
     '''
-    src/lib.rs mirrors all module declarations as pub mod.
-    ''',
-    '''
-    It re-exports many public types for integration tests.
-    ''',
-    '''
-    main.rs and lib.rs are sibling targets with separate module trees
-    that independently declare the same source files.  Both must
-    declare every module referenced via crate:: anywhere in src/.
-    ''',
-]
-
-[[assistant.instructions]]
-position = 930
-title = "Project Structure: Individual Crates"
-items = [
-    '''
-    The project is structured using Cargo.  Read the Cargo.toml for details.
+    src/lib.rs is the only module tree.  It declares basis, client,
+    errors, imports, model, and util as pub mod, re-exports bdk, and
+    defines gitver_hashes with include!() of OUT_DIR/gitver_hashes.rs
+    from build.rs.  src/main.rs uses the library through taxcount::
+    paths and declares no modules.
     ''',
 ]
 
@@ -111,7 +162,14 @@ position = 930
 title = "Project Structure: ignore files"
 items = [
     '''
-    .gitignore ignores target/ and __pycache__/.
+    .gitignore ignores:
+      - target/;
+      - .~*;
+      - runs/kraken-tests/, runs/electrum-testnet/,
+        runs/electrum-testnet-walletonly/, runs/ledgerlive-testnet/,
+        and runs/mock-testnet/;
+      - tools/ohlc-ness/raw-data/; and
+      - temporary-questions/.
     ''',
     '''
     .ignore (for .jp, ripgrep, and search tools) additionally ignores:
@@ -131,43 +189,7 @@ items = [
     /tmpf-*.git-commit.
     ''',
     '''
-    .jp/.gitignore ignores conversations/.
-    ''',
-    '''
-    snapshots/.gitignore ignores *.snap.new.
-    ''',
-]
-
-[[assistant.instructions]]
-position = 930
-title = "Project Structure: snapshots"
-items = [
-    '''
-    snapshots/ holds gargoyle .snap files named
-    test_module__test_name.snap.  .snap.new files are gitignored and
-    must be reviewed via cargo insta review.
-    ''',
-    '''
-    Do not tell the user that a snapshot waits for cargo insta review
-    until you have examined its current state in this turn.  The user
-    can accept snapshots between your turns, so a test result from an
-    earlier turn does not show the current state.
-    ''',
-    '''
-    snapshots/.gitignore ignores *.snap.new, so git status does not
-    show these files.  To find the current state of a snapshot, read
-    the git status of the .snap file, and also list the directory to
-    see if the .snap.new file is on disk.
-    ''',
-    '''
-    The four snapshot states are:
-      - a .snap.new file is on disk, and the review is pending;
-      - the .snap file is modified or staged, with no .snap.new file,
-        and the user completed the review;
-      - the .snap file is untracked, with no .snap.new file, and the
-        user accepted a new snapshot; and
-      - the .snap file is clean, with no .snap.new file, and no review
-        is necessary.
+    .jp/.gitignore ignores conversations/ and log/.
     ''',
 ]
 
@@ -176,31 +198,21 @@ position = 930
 title = "Project Structure: tests"
 items = [
     '''
-    Test coverage takes four forms:
-      - unit tests in source;
-      - integration tests in tests/;
-      - benches/; and
-      - batch/fuzz tests in bin/.
+    Test coverage takes three forms:
+      - unit tests in source, with #[traced_test] on each test;
+      - property tests with arbtest, named with a prop_test_ prefix; and
+      - run scripts in bin/ against references/ data.
     ''',
     '''
-    Unit tests live in src/module_name/tests.rs (not inline in the
-    source file).  The source file declares #[cfg(test)] mod tests;
-    at the top.
+    Most unit tests are inline, in #[cfg(test)] mod tests at the end of
+    the source file.  The named-file tests are src/model/gains/tests.rs,
+    src/model/ledgers/parsed/prop_tests.rs, and
+    crates/fett/src/loom_tests.rs (run with RUSTFLAGS="--cfg loom").
     ''',
     '''
-    tests/ uses a consolidated single-binary pattern at
-    tests/it/main.rs with many test modules and shared test_utils/.
-    ''',
-    '''
-    Integration tests use gargoyle snapshots.  The assertion rules are
-    in the "Assertion Allowlist" section of
-    .agentic-shepherd/doc/patterns/general-deployments/integration-testing-guide.md.
-    Rules for snapshot handling are in
-    .agentic-shepherd/instructions/test-organization.md under
-    "Integration Tests Use Gargoyle Snapshots".
-    ''',
-    '''
-    benches/ provides criterion benchmarks.
+    The workspace has no tests/ directory and no benches/ directory.
+    Fixture-driven tests read fixtures/fee-cases/ and fixtures/wallet/,
+    and the wallet tests use MockClient from src/imports/wallet.rs.
     ''',
 ]
 
@@ -236,11 +248,10 @@ items = [
     written here.
     ''',
     '''
-    doc/ holds longer-form documentation about using the agentic-shepherd project management
-    tooling and its coding conventions: checklist-command-yaml.md, scoped-commits.md,
-    rebuild-agent-instructions.md, and patterns/general-deployments/ (error handling, integration
-    testing with gargoyle snapshots, module declaration architecture, plan step references,
-    backporting, and sans-io.txt).
+    doc/ contains documentation about the agentic-shepherd tooling and
+    its coding conventions.  instructions/ contains instruction files
+    that replace embedded ones.  bin/ contains the code-map refresh
+    scripts and the cargo-deny database update script.
     ''',
     '''
     code-map.md (search index, gitignored) and log/ (gitignored)
@@ -263,10 +274,9 @@ items = [
     the jp-tools binary.
     ''',
     '''
-    .jp/config/ splits the rest by kind: knowledge/ holds
-    system-prompt sections such as this one, personas/ holds the
-    persona files, skill/ holds the skill files, and stack/ holds the
-    stack choices.
+    .jp/config/ is divided by kind: knowledge/ contains system-prompt
+    sections such as this one, personas/ contains the persona files,
+    and skill/ contains the skill files.
     ''',
     '''
     .jp/conversations/ holds conversation history (gitignored).
@@ -275,36 +285,14 @@ items = [
 
 [[assistant.instructions]]
 position = 930
-title = "Project Structure: .claude"
-items = [
-    '''
-    .claude/ (which only exists if selected as an init option)
-    configures the Claude Code agent: settings.json +
-    settings.local.json (sandbox-protected), statusline.sh, and
-    commands/ with top-level slash commands plus an
-    agentic-shepherd/ subdirectory for issue-management commands.
-    ''',
-]
-
-[[assistant.instructions]]
-position = 930
 title = "Project Structure: bin scripts"
 items = [
     '''
-    bin/ holds a few Zsh/Bash utility scripts, and Python hook scripts
-    wired into Claude Code (which only exists if selected as an init
-    option) via .claude/settings.json.
-    ''',
-    '''
-    Possible Hook scripts: auto-approve-use-block.py,
-    let-underscore-hook.py, plan-directory-hook.py,
-    rtfm-hook.py, say-hook.py, string-tax-hook.py,
-    sycophancy-hook.py.
-    ''',
-    '''
-    Possible Utility scripts: code-map-refresh-live.zsh +
-    nohup-code-map-refresh.zsh (refresh the gitignored code map),
-    deny-update.sh, fmt-nightly.zsh, gitver.sh.
+    bin/ contains shell scripts that run the taxcount binary against
+    one references/ data set each, and write output to runs/.
+    run-generic.sh defines a taxcount-run shell function with the full
+    option set, and run-bootstrap.sh is a non-working example of the
+    bootstrap-checkpoint tool.
     ''',
 ]
 
@@ -313,19 +301,15 @@ position = 930
 title = "Project Structure: documentation"
 items = [
     '''
-    Library documentation lives in target/doc/ and target/doc/src/.
-    Generate it with `cargo doc-all`.  Always read crate docs there
-    before using a dependency (especially onlyerror, gargoyle-snaps, and
-    onlyargs).
-    ''',
-    '''
-    .agentic-shepherd/doc/ holds scoped-commits.md,
-    checklist-command-yaml.md, and patterns/general-deployments/.
+    Library documentation is in target/doc/ and target/doc/src/.
+    Generate it with `cargo doc-all`.  Before you use a dependency,
+    read its crate docs there (in particular thiserror, onlyargs, bdk,
+    rust_decimal, and arbtest).
     ''',
     '''
     MANDATORY documents:
     - before you write code or plans, read
-      target/doc/onlyerror/index.html (the derive(Error) macro DSL) and
+      target/doc/thiserror/index.html (the derive(Error) macro) and
       .agentic-shepherd/doc/patterns/general-deployments/error-handling-principles.md;
     - before you write an integration test, read
       .agentic-shepherd/doc/patterns/general-deployments/integration-testing-guide.md
@@ -345,25 +329,6 @@ items = [
 
 [[assistant.instructions]]
 position = 930
-title = "Project Structure: example-code"
-items = [
-    '''
-    example-code/ holds reference checkouts of other people's
-    projects, cloned from the URLs listed in example-code/origins.txt.
-    They are read-only study material: no part of example-code/ is a
-    workspace member, and nothing there is built, tested, or edited by
-    this project.
-    ''',
-    '''
-    example-code/.gitignore excludes each clone directory, so
-    origins.txt is the only tracked file.  A clone named in
-    origins.txt may or may not be present on disk; list the directory
-    before assuming.
-    ''',
-]
-
-[[assistant.instructions]]
-position = 930
 title = "Project Structure: anti-patterns"
 items = [
     '''
@@ -375,8 +340,10 @@ items = [
     Never use #[path = "..."] attributes on modules.
     ''',
     '''
-    Never place test code in the implementation source file.  Unit
-    tests live in src/<module>/tests.rs, declared via
+    Do not add new test code to an implementation source file.  Put
+    new unit tests in src/<module>/tests.rs, declared with
     #[cfg(test)] mod tests; at the top of the implementation file.
+    The inline test modules that are in the code at this time stay
+    until an issue moves them.
     ''',
 ]

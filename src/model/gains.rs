@@ -457,8 +457,8 @@ impl CapGainsWorksheet {
                             // reduces the trade atoms' proceeds on the same ledger row as the
                             // outgoing amount: in that case the trade atoms' and fee atoms'
                             // proceeds must sum to the event's total proceeds. All other fee
-                            // atoms (row_in fees, withdrawal, deposit, margin, wallet events) book
-                            // their proceeds nowhere.
+                            // atoms (row_in fees, withdrawal, deposit, margin, wallet events)
+                            // contribute only their net gain.
                             Self::fold_gain_term(
                                 &mut acc,
                                 net_gain,
@@ -468,8 +468,8 @@ impl CapGainsWorksheet {
                         EventAtom::InvestmentFee {
                             proceeds, net_gain, ..
                         } => {
-                            // Investment interest expense: the basis and net gain book to the
-                            // trade cells; the payment-time value accumulates in `position_fees`.
+                            // Investment interest expense: the basis and net gain accumulate in
+                            // the trade cells; the payment-time value accumulates in `position_fees`.
                             Self::fold_gain_term(&mut acc, net_gain, None);
                             Self::fold_position_fee(&mut acc, net_gain, *proceeds);
                         }
@@ -479,7 +479,7 @@ impl CapGainsWorksheet {
                 acc
             });
 
-        // TODO: Apply interest investment expenses from the previous year.  issue #94
+        // TODO: Apply interest investment expenses from the previous year.  GitHub issue #3
         // TODO: The difference carries over to the next tax year
         let (gains_us_short, _carryover) = gain_matrix
             .us_short
@@ -716,12 +716,12 @@ impl GainMatrixShort {
     ///
     /// The investment interest expense (`position_fees`) is stored in the positive convention:
     /// the payment-time value of the rollover fees. The deduction is capped at the gain before
-    /// the expense; the excess carries over to the next tax year (unused until issue #94).
+    /// the expense; the excess carries over to the next tax year (unused until GitHub issue #3).
     fn apply_interest_expenses(
         &mut self,
         _previous_carryover: UsdAmount,
     ) -> (UsdAmount, UsdAmount) {
-        // TODO: apply interest investment expenses from the previous year.  issue #94
+        // TODO: apply interest investment expenses from the previous year.  GitHub issue #3
         let gain_before = self.trade_gain + self.position_proceeds;
         self.position_fees_min = gain_before
             .min(self.position_fees)
@@ -735,17 +735,17 @@ impl GainMatrixShort {
 }
 
 impl GainMatrixLong {
-    /// Apply the interest expenses from the previous year and this year.  issue #94
+    /// Apply the interest expenses from the previous year and this year.  GitHub issue #3
     /// Returns the gain and the carryover for next year.
     ///
     /// The investment interest expense (`position_fees`) is stored in the positive convention:
     /// the payment-time value of the rollover fees. The deduction is capped at the gain before
-    /// the expense; the excess carries over to the next tax year (unused until issue #94).
+    /// the expense; the excess carries over to the next tax year (unused until GitHub issue #3).
     fn apply_interest_expenses(
         &mut self,
         _previous_carryover: UsdAmount,
     ) -> (UsdAmount, UsdAmount) {
-        // TODO: apply interest investment expenses from the previous year.  issue #94
+        // TODO: apply interest investment expenses from the previous year.  GitHub issue #3
         let gain_before = self.trade_gain;
         self.position_fees_min = gain_before
             .min(self.position_fees)
