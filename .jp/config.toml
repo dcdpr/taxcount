@@ -173,7 +173,7 @@ style = { inline_results = "full", results_file_link = "off", parameters = "off"
 enable = true
 run = "unattended"
 source = "local"
-command = "bin/code-map-refresh-live.zsh"
+command = ".agentic-shepherd/bin/code-map-refresh-live.zsh"
 summary = "Regenerate .agentic-shepherd/code-map.md for the live workspace."
 style = { inline_results = "full", results_file_link = "off", parameters = "off" }
 
@@ -181,7 +181,7 @@ style = { inline_results = "full", results_file_link = "off", parameters = "off"
 enable = true
 run = "unattended"
 source = "local"
-command = "bin/deny-update.sh"
+command = ".agentic-shepherd/bin/deny-update.sh"
 summary = "Run cargo-deny check; refreshes the advisory DB and re-stamps its freshness for the pre-commit hook only when the cached DB is missing or over 3 days old, otherwise runs offline."
 style = { inline_results = "full", results_file_link = "off", parameters = "off" }
 
