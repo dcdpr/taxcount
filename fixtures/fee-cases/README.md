@@ -30,6 +30,9 @@ Expected:
   $10.08 basis.
 - Short-term loss $0.06 on the fee coin: proceeds $8, basis $8.06.  The
   fee is not deductible separately; it already reduced the sale proceeds.
+- In the sums table, the trade atom keeps the full $1,000, the fee atom
+  adds its $8 to "Trade Proceeds", and the "Fees" row holds the $8 in the
+  long-term column, the column of the sale.  "Gain" is $981.92 (issue #4).
 - ETH basis $1,000.
 - Alternative defensible treatment: capitalize the fee into the ETH basis
   instead (long-term gain $989.92, ETH basis $1,008).
@@ -46,7 +49,8 @@ Same trade, lots reversed so FIFO sells the short-term coin:
 - 2026-07-20: same 20-ETH trade, 0.008 BTC fee.
 
 Expected:
-- Short-term loss $16: proceeds $992, basis $1,008.
+- Short-term loss $16: proceeds $992, basis $1,008.  In the sums table,
+  the $8 is in the short-term "Fees" row, the column of the sale.
 - Long-term gain $7.92 on the fee coin: proceeds $8, basis $0.08.
 - ETH basis $1,000.
 

@@ -1,5 +1,8 @@
+// 04 / Bona Fide Move-Date Value is required in ledgers-sums for reconciliation
+// issue-004-sums-fees.md
+
 use crate::model::events::{Event, EventAtom, EventSubType, GainPortion, GainTerm};
-use crate::model::kraken_amount::UsdAmount;
+use crate::model::kraken_amount::{KrakenAmount, UsdAmount};
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
 
@@ -24,55 +27,72 @@ struct CapGainsWorksheetRow {
     event_details: Vec<EventAtom>,
 }
 
+/// One line for each atom of each event: the ledger row, the atom, and the atom's share of the
+/// sale expenses of its event (see [`fee_shares`]).
 #[derive(Debug)]
 pub struct CapGainsEventDetails<'a> {
-    details: Vec<(&'a str, &'a EventAtom)>,
+    details: Vec<(&'a str, &'a EventAtom, Option<UsdAmount>)>,
 }
 
+/// The sums table of one worksheet.
+///
+/// In each cell, the gain is the trade proceeds plus the move-date value minus the trade basis
+/// plus the position proceeds minus the fees. `assert_error_check` makes sure of this identity.
+// Section 3, Sums Table :: Step 3, Sums Struct
 #[derive(Debug)]
 pub struct Sums {
     ledger_proceeds: UsdAmount,
     gain_matrix: GainMatrix,
-    gains_us_short: UsdAmount,
-    gains_us_long: UsdAmount,
-    // TODO: Might be better to wrap both of these into a single Option.
-    gains_bona_fide_short: Option<UsdAmount>,
-    gains_bona_fide_long: Option<UsdAmount>,
 }
 
 /// The gains matrix stores intermediate gains values across the full term-length/residency matrix.
+///
+/// The bona fide cells are `None` when no atom has a bona fide portion. The sums table shows a
+/// `None` cell as blank.
 #[derive(Debug, Default)]
 struct GainMatrix {
-    income: UsdAmount,
-    us_short: GainMatrixShort,
-    us_long: GainMatrixLong,
-    bona_fide_short: Option<GainMatrixShort>,
-    bona_fide_long: Option<GainMatrixLong>,
+    /// The proceeds of each trade atom, position atom, and income atom: the amount that the
+    /// parties of each event agreed to transfer. The error check compares it with the ledger
+    /// proceeds.
+    event_proceeds: UsdAmount,
+    us_short: GainCell,
+    us_long: GainCell,
+    bona_fide_short: Option<GainCell>,
+    bona_fide_long: Option<GainCell>,
 }
 
-/// Short-term columns in the gains matrix. Has `position_proceeeds`
+/// One cell of the gains matrix: one term and one residency.
+// Section 3, Sums Table :: Step 1, One Cell Struct
 #[derive(Clone, Debug, Default)]
-struct GainMatrixShort {
-    trade_basis: UsdAmount,
+struct GainCell {
+    /// The proceeds of each trade atom, fee atom, and investment fee atom.
     trade_proceeds: UsdAmount,
+
+    /// The value on the move date of each split that the bona fide move date divides. The US
+    /// cells only. The bona fide portion of the same split has this value as its basis.
+    move_date_value: UsdAmount,
+
+    /// The basis of each trade atom, fee atom, and investment fee atom.
+    trade_basis: UsdAmount,
+
+    /// The sum of the net gains of the portions folded into this cell. The error check compares
+    /// it with the identity in `gain`.
     trade_gain: UsdAmount,
+
+    /// The proceeds of each position atom. The short-term cells only.
     position_proceeds: UsdAmount,
-    /// Total investment interest expense (payment-time value).
-    position_fees: UsdAmount,
-    /// Investment interest expense deduction taken this year.
-    position_fees_min: UsdAmount,
+
+    /// The fee value of each fee atom that is an expense of a sale, as a positive quantity.
+    fees: UsdAmount,
 }
 
-/// Long-term columns in the gains matrix.
-#[derive(Clone, Debug, Default)]
-struct GainMatrixLong {
-    trade_basis: UsdAmount,
-    trade_proceeds: UsdAmount,
-    trade_gain: UsdAmount,
-    /// Total investment interest expense (payment-time value).
-    position_fees: UsdAmount,
-    /// Investment interest expense deduction taken this year.
-    position_fees_min: UsdAmount,
+/// The address of one cell in the gains matrix.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CellId {
+    UsShort,
+    UsLong,
+    BonaFideShort,
+    BonaFideLong,
 }
 
 impl Display for CapGainsWorksheet {
@@ -131,41 +151,41 @@ impl Display for GainTerm {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self {
             GainTerm::ShortUs(us) => {
-                // Columns F-J
+                // Columns G-K
                 us.fmt_term(f, false)?;
-                // Columns K-O
+                // Columns L-P
                 f.write_str(r#","","","","","""#)
             }
             GainTerm::ShortBonaFide(bona_fide) => {
-                // Columns F-J
+                // Columns G-K
                 f.write_str(r#""","","","","","#)?;
-                // Columns K-O
+                // Columns L-P
                 bona_fide.fmt_term(f, false)
             }
             GainTerm::Short { us, bona_fide } => {
-                // Columns F-J
+                // Columns G-K
                 us.fmt_term(f, false)?;
                 f.write_str(",")?;
-                // Columns K-O
+                // Columns L-P
                 bona_fide.fmt_term(f, false)
             }
             GainTerm::LongUs(us) => {
-                // Columns F-J
+                // Columns G-K
                 us.fmt_term(f, true)?;
-                // Columns K-O
+                // Columns L-P
                 f.write_str(r#","","","","","""#)
             }
             GainTerm::LongBonaFide(bona_fide) => {
-                // Columns F-J
+                // Columns G-K
                 f.write_str(r#""","","","","","#)?;
-                // Columns K-O
+                // Columns L-P
                 bona_fide.fmt_term(f, true)
             }
             GainTerm::Long { us, bona_fide } => {
-                // Columns F-J
+                // Columns G-K
                 us.fmt_term(f, true)?;
                 f.write_str(",")?;
-                // Columns K-O
+                // Columns L-P
                 bona_fide.fmt_term(f, true)
             }
         }
@@ -202,47 +222,43 @@ impl Display for CapGainsEventDetails<'_> {
         writeln!(
             f,
             concat!(
-                // Columns A-E
-                r#""Ledger Row ID","Event","Asset Name","Asset Amount","Proceeds","#,
+                // Columns A-F
+                r#""Ledger Row ID","Event","Asset Name","Asset Amount","Proceeds","Fees","#,
                 //
                 // TODO: I'm not a fan of flattening the matrix in this way. Can it be done better?
                 //
-                // Columns F-H
+                // Columns G-I
                 r#""Basis (US)","Basis Date (US)","Basis Synthetic ID (US)","#,
-                // Columns I-J
+                // Columns J-K
                 r#""Net Capital Gains (US Short Term)","Net Capital Gains (US Long Term)","#,
-                // Columns K-M
+                // Columns L-N
                 r#""Basis (Non-US)","Basis Date (Non-US)","Basis Synthetic ID (Non-US)","#,
-                // Columns N-O
+                // Columns O-P
                 r#""Net Capital Gains (Non-US Short Term)","Net Capital Gains (Non-US Long Term)""#,
             )
         )?;
 
         // Write CSV rows
-        // Column A-B, and columns C-O
-        for (ledger_row_id, atom) in &self.details {
-            writeln!(f, r#""{ledger_row_id}","{}",{atom}"#, atom.name())?;
+        // Section 4, Event Details CSV
+        for (ledger_row_id, atom, fee_share) in &self.details {
+            // Columns A-F
+            write!(
+                f,
+                r#""{ledger_row_id}","{name}","{asset_name}","{asset_amount}","{proceeds}","{fees}","#,
+                name = atom.name(),
+                asset_name = atom.asset_amount().get_asset(),
+                asset_amount = atom.asset_amount(),
+                proceeds = atom.proceeds().unwrap_or_default(),
+                fees = fee_share.to_csv_string(|x| *x),
+            )?;
+            // Columns G-P
+            match atom.net_gain() {
+                Some(net_gain) => writeln!(f, "{net_gain}")?,
+                None => writeln!(f, r#""","","","","","","","","","""#)?,
+            }
         }
 
         Ok(())
-    }
-}
-
-impl Display for EventAtom {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Columns C-E
-        write!(
-            f,
-            r#""{asset_name}","{asset_amount}","{proceeds}","#,
-            asset_name = self.asset_amount().get_asset(),
-            asset_amount = self.asset_amount(),
-            proceeds = self.proceeds().unwrap_or_default(),
-        )?;
-        // Columns F-O
-        match self.net_gain() {
-            Some(net_gain) => write!(f, "{net_gain}"),
-            None => f.write_str(r#""","","","","","","","","","""#),
-        }
     }
 }
 
@@ -262,18 +278,8 @@ impl ToCsvString for Option<UsdAmount> {
     }
 }
 
-impl ToCsvString for Option<GainMatrixLong> {
-    type Inner = GainMatrixLong;
-
-    fn to_csv_string<F: Fn(&Self::Inner) -> UsdAmount>(&self, map_fn: F) -> String {
-        self.as_ref()
-            .map(|col| map_fn(col).to_string())
-            .unwrap_or_default()
-    }
-}
-
-impl ToCsvString for Option<GainMatrixShort> {
-    type Inner = GainMatrixShort;
+impl ToCsvString for Option<GainCell> {
+    type Inner = GainCell;
 
     fn to_csv_string<F: Fn(&Self::Inner) -> UsdAmount>(&self, map_fn: F) -> String {
         self.as_ref()
@@ -283,6 +289,7 @@ impl ToCsvString for Option<GainMatrixShort> {
 }
 
 impl Display for Sums {
+    // Section 3, Sums Table :: Step 2, Rows
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Write the CSV header
         writeln!(
@@ -290,69 +297,67 @@ impl Display for Sums {
             r#""","US Long Term","US Short Term","Non-US Long Term","Non-US Short Term""#,
         )?;
 
+        let us_long = &self.gain_matrix.us_long;
+        let us_short = &self.gain_matrix.us_short;
         let bona_fide_long = &self.gain_matrix.bona_fide_long;
         let bona_fide_short = &self.gain_matrix.bona_fide_short;
 
         // Row 1
         writeln!(
             f,
-            r#""Trade Basis","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = self.gain_matrix.us_long.trade_basis,
-            us_short = self.gain_matrix.us_short.trade_basis,
-            bona_fide_long = bona_fide_long.to_csv_string(|col| col.trade_basis),
-            bona_fide_short = bona_fide_short.to_csv_string(|col| col.trade_basis),
+            r#""Trade Proceeds","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
+            us_long = us_long.trade_proceeds,
+            us_short = us_short.trade_proceeds,
+            bona_fide_long = bona_fide_long.to_csv_string(|col| col.trade_proceeds),
+            bona_fide_short = bona_fide_short.to_csv_string(|col| col.trade_proceeds),
         )?;
 
         // Row 2
+        // The move-date value is in the US cells only. The bona fide portion of the same split
+        // has it as the basis, in the Non-US cells of row 3.
         writeln!(
             f,
-            r#""Trade Proceeds","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = self.gain_matrix.us_long.trade_proceeds,
-            us_short = self.gain_matrix.us_short.trade_proceeds,
-            bona_fide_long = bona_fide_long.to_csv_string(|col| col.trade_proceeds),
-            bona_fide_short = bona_fide_short.to_csv_string(|col| col.trade_proceeds),
+            r#""Move-Date Value","{us_long}","{us_short}","","""#,
+            us_long = us_long.move_date_value,
+            us_short = us_short.move_date_value,
         )?;
 
         // Row 3
         writeln!(
             f,
-            r#""Position Proceeds","","{us_short}","","{bona_fide_short}""#,
-            us_short = self.gain_matrix.us_short.position_proceeds,
-            bona_fide_short = bona_fide_short.to_csv_string(|col| col.position_proceeds),
+            r#""Trade Basis","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
+            us_long = us_long.trade_basis,
+            us_short = us_short.trade_basis,
+            bona_fide_long = bona_fide_long.to_csv_string(|col| col.trade_basis),
+            bona_fide_short = bona_fide_short.to_csv_string(|col| col.trade_basis),
         )?;
 
         // Row 4
-        // The interest expense is stored in the positive convention; render it negated.
-        // TODO: Negation renders `-0.0000`. Consider a method that returns positive zero.
         writeln!(
             f,
-            r#""Interest Expense","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = -self.gain_matrix.us_long.position_fees,
-            us_short = -self.gain_matrix.us_short.position_fees,
-            bona_fide_long = bona_fide_long.to_csv_string(|col| -col.position_fees),
-            bona_fide_short = bona_fide_short.to_csv_string(|col| -col.position_fees),
+            r#""Position Proceeds","","{us_short}","","{bona_fide_short}""#,
+            us_short = us_short.position_proceeds,
+            bona_fide_short = bona_fide_short.to_csv_string(|col| col.position_proceeds),
         )?;
 
         // Row 5
-        // The limited interest expense is stored in the positive convention; render it negated.
-        // TODO: Negation renders `-0.0000`. Consider a method that returns positive zero.
         writeln!(
             f,
-            r#""Limited Interest Expense","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = -self.gain_matrix.us_long.position_fees_min,
-            us_short = -self.gain_matrix.us_short.position_fees_min,
-            bona_fide_long = bona_fide_long.to_csv_string(|col| -col.position_fees_min),
-            bona_fide_short = bona_fide_short.to_csv_string(|col| -col.position_fees_min),
+            r#""Fees","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
+            us_long = us_long.fees,
+            us_short = us_short.fees,
+            bona_fide_long = bona_fide_long.to_csv_string(|col| col.fees),
+            bona_fide_short = bona_fide_short.to_csv_string(|col| col.fees),
         )?;
 
         // Row 6
         writeln!(
             f,
             r#""Gain","{us_long}","{us_short}","{bona_fide_long}","{bona_fide_short}""#,
-            us_long = self.gains_us_long,
-            us_short = self.gains_us_short,
-            bona_fide_long = self.gains_bona_fide_long.to_csv_string(|x| *x),
-            bona_fide_short = self.gains_bona_fide_short.to_csv_string(|x| *x),
+            us_long = us_long.gain(),
+            us_short = us_short.gain(),
+            bona_fide_long = bona_fide_long.to_csv_string(GainCell::gain),
+            bona_fide_short = bona_fide_short.to_csv_string(GainCell::gain),
         )?;
 
         Ok(())
@@ -372,12 +377,16 @@ impl CapGainsWorksheet {
             .worksheet
             .iter()
             .flat_map(|row| {
-                row.event_details.iter().map(|detail| {
-                    let ledger_row_id =
-                        detail.ledger_row_id().unwrap_or(row.ledger_row_id.as_str());
+                let fee_shares = fee_shares(&row.event_details);
+                row.event_details
+                    .iter()
+                    .zip(fee_shares)
+                    .map(|(detail, fee_share)| {
+                        let ledger_row_id =
+                            detail.ledger_row_id().unwrap_or(row.ledger_row_id.as_str());
 
-                    (ledger_row_id, detail)
-                })
+                        (ledger_row_id, detail, fee_share)
+                    })
             })
             .collect();
 
@@ -414,64 +423,56 @@ impl CapGainsWorksheet {
         dates
     }
 
+    // Section 3, Sums Table :: Step 2, Rows
     pub fn sums(&self) -> Sums {
         let ledger_proceeds = self
             .worksheet
             .iter()
             .fold(UsdAmount::default(), |acc, row| acc + row.proceeds);
 
-        let mut gain_matrix = self
+        let gain_matrix = self
             .worksheet
             .iter()
             .fold(GainMatrix::default(), |mut acc, row| {
-                for atom in &row.event_details {
+                let fee_shares = fee_shares(&row.event_details);
+                for (atom, fee_share) in row.event_details.iter().zip(fee_shares) {
                     match atom {
                         EventAtom::Trade {
                             proceeds, net_gain, ..
                         } => {
-                            Self::fold_gain_term(&mut acc, net_gain, Some(*proceeds));
+                            acc.event_proceeds += *proceeds;
+                            Self::fold_gain_term(&mut acc, net_gain, *proceeds);
+                            if let Some(fee_share) = fee_share {
+                                acc.cell_mut(net_gain.sale_cell()).fees += fee_share;
+                            }
                         }
                         EventAtom::Income { proceeds, .. } => {
-                            acc.income += *proceeds;
+                            acc.event_proceeds += *proceeds;
                         }
                         EventAtom::Position {
                             proceeds_us,
                             proceeds_bona_fide,
                             ..
                         } => {
+                            acc.event_proceeds +=
+                                *proceeds_us + proceeds_bona_fide.unwrap_or_default();
                             acc.us_short.position_proceeds += *proceeds_us;
 
                             if let Some(bona_fide) = *proceeds_bona_fide {
-                                let acc = acc.bona_fide_short.get_or_insert_with(Default::default);
-
-                                acc.position_proceeds += bona_fide;
+                                acc.cell_mut(CellId::BonaFideShort).position_proceeds += bona_fide;
+                            }
+                            if let Some(fee_share) = fee_share {
+                                let cell = position_cell(*proceeds_bona_fide);
+                                acc.cell_mut(cell).fees += fee_share;
                             }
                         }
                         EventAtom::Fee {
-                            proceeds,
-                            net_gain,
-                            reduces_proceeds,
-                            ..
-                        } => {
-                            // A fee atom's proceeds flow to `trade_proceeds` only when the fee
-                            // reduces the trade atoms' proceeds on the same ledger row as the
-                            // outgoing amount: in that case the trade atoms' and fee atoms'
-                            // proceeds must sum to the event's total proceeds. All other fee
-                            // atoms (row_in fees, withdrawal, deposit, margin, wallet events)
-                            // contribute only their net gain.
-                            Self::fold_gain_term(
-                                &mut acc,
-                                net_gain,
-                                (*reduces_proceeds).then_some(*proceeds),
-                            );
+                            proceeds, net_gain, ..
                         }
-                        EventAtom::InvestmentFee {
+                        | EventAtom::InvestmentFee {
                             proceeds, net_gain, ..
                         } => {
-                            // Investment interest expense: the basis and net gain accumulate in
-                            // the trade cells; the payment-time value accumulates in `position_fees`.
-                            Self::fold_gain_term(&mut acc, net_gain, None);
-                            Self::fold_position_fee(&mut acc, net_gain, *proceeds);
+                            Self::fold_gain_term(&mut acc, net_gain, *proceeds);
                         }
                     }
                 }
@@ -479,142 +480,172 @@ impl CapGainsWorksheet {
                 acc
             });
 
-        // TODO: Apply interest investment expenses from the previous year.  GitHub issue #3
-        // TODO: The difference carries over to the next tax year
-        let (gains_us_short, _carryover) = gain_matrix
-            .us_short
-            .apply_interest_expenses(UsdAmount::default());
-
-        let (gains_us_long, _carryover) = gain_matrix
-            .us_long
-            .apply_interest_expenses(UsdAmount::default());
-
-        let gains_bona_fide_short = gain_matrix.bona_fide_short.as_mut().map(|bona_fide| {
-            let (gains, _carryover) = bona_fide.apply_interest_expenses(UsdAmount::default());
-
-            gains
-        });
-
-        let gains_bona_fide_long = gain_matrix.bona_fide_long.as_mut().map(|bona_fide| {
-            let (gains, _carryover) = bona_fide.apply_interest_expenses(UsdAmount::default());
-
-            gains
-        });
-
         Sums {
             ledger_proceeds,
             gain_matrix,
-            gains_us_short,
-            gains_us_long,
-            gains_bona_fide_short,
-            gains_bona_fide_long,
         }
     }
 
-    /// Fold a gain term's basis and net gain into the trade cells, and its proceeds (if any)
-    /// into the `trade_proceeds` cell.
-    fn fold_gain_term(
-        gain_matrix: &mut GainMatrix,
-        net_gain: &GainTerm,
-        proceeds: Option<UsdAmount>,
-    ) {
+    /// Fold a disposal into the gains matrix: its proceeds into the sale cell, and the basis and
+    /// the net gain of each portion into the cell of that portion.
+    ///
+    /// For a split that the move date divides, the US portion has the basis and the gain up to
+    /// the move date, and the move-date value goes into the US cell. The bona fide portion has the
+    /// move-date value as its basis, and the proceeds go into the Non-US cell.
+    fn fold_gain_term(gain_matrix: &mut GainMatrix, net_gain: &GainTerm, proceeds: UsdAmount) {
         match net_gain {
-            GainTerm::ShortUs(us) => {
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.us_short.trade_proceeds += proceeds;
-                }
-                gain_matrix.us_short.trade_basis += us.basis;
-                gain_matrix.us_short.trade_gain += us.net_gain;
+            GainTerm::ShortUs(portion)
+            | GainTerm::ShortBonaFide(portion)
+            | GainTerm::LongUs(portion)
+            | GainTerm::LongBonaFide(portion) => {
+                let cell = gain_matrix.cell_mut(net_gain.sale_cell());
+                cell.trade_proceeds += proceeds;
+                cell.trade_basis += portion.basis;
+                cell.trade_gain += portion.net_gain;
             }
-            GainTerm::ShortBonaFide(bona_fide) => {
-                let gain_matrix = gain_matrix
-                    .bona_fide_short
-                    .get_or_insert_with(Default::default);
+            GainTerm::Short { us, bona_fide } | GainTerm::Long { us, bona_fide } => {
+                let us_cell = gain_matrix.cell_mut(net_gain.us_cell());
+                us_cell.move_date_value += bona_fide.basis;
+                us_cell.trade_basis += us.basis;
+                us_cell.trade_gain += us.net_gain;
 
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.trade_proceeds += proceeds;
-                }
-                gain_matrix.trade_basis += bona_fide.basis;
-                gain_matrix.trade_gain += bona_fide.net_gain;
-            }
-            GainTerm::Short { us, bona_fide } => {
-                gain_matrix.us_short.trade_basis += us.basis;
-                gain_matrix.us_short.trade_gain += us.net_gain;
-
-                let gain_matrix = gain_matrix
-                    .bona_fide_short
-                    .get_or_insert_with(Default::default);
-
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.trade_proceeds += proceeds;
-                }
-                gain_matrix.trade_basis += bona_fide.basis;
-                gain_matrix.trade_gain += bona_fide.net_gain;
-            }
-            GainTerm::LongUs(us) => {
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.us_long.trade_proceeds += proceeds;
-                }
-                gain_matrix.us_long.trade_basis += us.basis;
-                gain_matrix.us_long.trade_gain += us.net_gain;
-            }
-            GainTerm::LongBonaFide(bona_fide) => {
-                let gain_matrix = gain_matrix
-                    .bona_fide_long
-                    .get_or_insert_with(Default::default);
-
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.trade_proceeds += proceeds;
-                }
-                gain_matrix.trade_basis += bona_fide.basis;
-                gain_matrix.trade_gain += bona_fide.net_gain;
-            }
-            GainTerm::Long { us, bona_fide } => {
-                gain_matrix.us_long.trade_basis += us.basis;
-                gain_matrix.us_long.trade_gain += us.net_gain;
-
-                let gain_matrix = gain_matrix
-                    .bona_fide_long
-                    .get_or_insert_with(Default::default);
-
-                if let Some(proceeds) = proceeds {
-                    gain_matrix.trade_proceeds += proceeds;
-                }
-                gain_matrix.trade_basis += bona_fide.basis;
-                gain_matrix.trade_gain += bona_fide.net_gain;
+                let bona_fide_cell = gain_matrix.cell_mut(net_gain.sale_cell());
+                bona_fide_cell.trade_proceeds += proceeds;
+                bona_fide_cell.trade_basis += bona_fide.basis;
+                bona_fide_cell.trade_gain += bona_fide.net_gain;
             }
         }
     }
+}
 
-    /// Fold an investment interest expense's payment-time value into the `position_fees` cell
-    /// of its term/residency.
-    fn fold_position_fee(gain_matrix: &mut GainMatrix, net_gain: &GainTerm, proceeds: UsdAmount) {
-        match net_gain {
-            GainTerm::ShortUs(_) => {
-                gain_matrix.us_short.position_fees += proceeds;
-            }
-            GainTerm::ShortBonaFide(_) => {
-                let gain_matrix = gain_matrix
-                    .bona_fide_short
-                    .get_or_insert_with(Default::default);
+/// True when the atoms contain a sale: a trade atom or a position atom.
+///
+/// In a sale event, each fee atom is an expense of the sale. In each other event, a fee atom is
+/// the disposal of the fee coin only.
+// Section 1, Atoms :: Step 2, Sale Event Rule
+fn is_sale_event(atoms: &[EventAtom]) -> bool {
+    atoms
+        .iter()
+        .any(|atom| matches!(atom, EventAtom::Trade { .. } | EventAtom::Position { .. }))
+}
 
-                gain_matrix.position_fees += proceeds;
-            }
-            GainTerm::LongUs(_) => {
-                gain_matrix.us_long.position_fees += proceeds;
-            }
-            GainTerm::LongBonaFide(_) => {
-                let gain_matrix = gain_matrix
-                    .bona_fide_long
-                    .get_or_insert_with(Default::default);
+/// The cell of the sale expenses of a position atom: the short-term cell of its residency.
+fn position_cell(proceeds_bona_fide: Option<UsdAmount>) -> CellId {
+    if proceeds_bona_fide.is_some() {
+        CellId::BonaFideShort
+    } else {
+        CellId::UsShort
+    }
+}
 
-                gain_matrix.position_fees += proceeds;
-            }
-            _ => unreachable!(
-                "Fee atoms are unsplittable by definition. The fee in the large may be attributed \
-                 to both the US and bona fide columns, but only by spanning multiple fee atoms \
-                 that straddle the bona fide residency date (see `EventAtom::from_fee_split`)."
-            ),
+/// The share of the sale expenses of each atom, by index.
+///
+/// In a sale event, the fee value of each fee atom is an expense of the sale. The sum of the fee
+/// values divides across the trade atoms pro-rata by amount, with the rounding remainder on the
+/// last trade atom. When the event has no trade atom, the full sum goes to the last position
+/// atom. Each other atom, and each atom of an event that is not a sale, has `None`.
+// Section 2, Fee Shares
+fn fee_shares(atoms: &[EventAtom]) -> Vec<Option<UsdAmount>> {
+    let mut shares = vec![None; atoms.len()];
+    if !is_sale_event(atoms) {
+        return shares;
+    }
+
+    let fee_value = atoms
+        .iter()
+        .filter_map(|atom| match atom {
+            EventAtom::Fee { proceeds, .. } => Some(*proceeds),
+            _ => None,
+        })
+        .fold(UsdAmount::default(), |acc, proceeds| acc + proceeds);
+
+    let trades: Vec<(usize, KrakenAmount)> = atoms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, atom)| match atom {
+            EventAtom::Trade { asset_amount, .. } => Some((index, asset_amount.abs())),
+            _ => None,
+        })
+        .collect();
+
+    if trades.is_empty() {
+        let positions: Vec<usize> = atoms
+            .iter()
+            .enumerate()
+            .filter_map(|(index, atom)| matches!(atom, EventAtom::Position { .. }).then_some(index))
+            .collect();
+        for (count, index) in positions.iter().enumerate() {
+            let is_last = count + 1 == positions.len();
+            shares[*index] = Some(if is_last {
+                fee_value
+            } else {
+                UsdAmount::default()
+            });
+        }
+        return shares;
+    }
+
+    // The trade atoms of an event are one asset at one rate, so the pro-rata share by amount is
+    // the pro-rata share by proceeds.
+    let total_amount = trades
+        .iter()
+        .map(|(_, amount)| *amount)
+        .reduce(|acc, amount| acc + amount)
+        .expect("trades is not empty");
+    let fee_value_per_unit = fee_value.sub_divide(total_amount);
+
+    let mut applied = UsdAmount::default();
+    for (count, (index, amount)) in trades.iter().enumerate() {
+        let is_last = count + 1 == trades.len();
+        let share = if is_last {
+            fee_value - applied
+        } else {
+            amount.get_value_usd(fee_value_per_unit)
+        };
+        applied += share;
+        shares[*index] = Some(share);
+    }
+
+    shares
+}
+
+impl GainMatrix {
+    /// The cell at `id`. A bona fide cell is created on its first use.
+    fn cell_mut(&mut self, id: CellId) -> &mut GainCell {
+        match id {
+            CellId::UsShort => &mut self.us_short,
+            CellId::UsLong => &mut self.us_long,
+            CellId::BonaFideShort => self.bona_fide_short.get_or_insert_with(Default::default),
+            CellId::BonaFideLong => self.bona_fide_long.get_or_insert_with(Default::default),
+        }
+    }
+}
+
+impl GainCell {
+    /// The capital gain of the cell: the Schedule D value.
+    fn gain(&self) -> UsdAmount {
+        self.trade_proceeds + self.move_date_value - self.trade_basis + self.position_proceeds
+            - self.fees
+    }
+}
+
+impl GainTerm {
+    /// The cell of the sale: the proceeds and the sale expenses go there. For a split that the
+    /// move date divides, the sale is after the move date, in the Non-US cell.
+    fn sale_cell(&self) -> CellId {
+        match self {
+            Self::ShortUs(_) => CellId::UsShort,
+            Self::LongUs(_) => CellId::UsLong,
+            Self::ShortBonaFide(_) | Self::Short { .. } => CellId::BonaFideShort,
+            Self::LongBonaFide(_) | Self::Long { .. } => CellId::BonaFideLong,
+        }
+    }
+
+    /// The US cell of the term.
+    fn us_cell(&self) -> CellId {
+        match self {
+            Self::ShortUs(_) | Self::ShortBonaFide(_) | Self::Short { .. } => CellId::UsShort,
+            Self::LongUs(_) | Self::LongBonaFide(_) | Self::Long { .. } => CellId::UsLong,
         }
     }
 }
@@ -645,19 +676,19 @@ impl CapGainsWorksheetRow {
 }
 
 impl Sums {
-    /// The US short-term gain after the interest-expense cap.
+    /// The US short-term capital gain.
     #[cfg(test)]
     pub(crate) fn gains_us_short(&self) -> UsdAmount {
-        self.gains_us_short
+        self.gain_matrix.us_short.gain()
     }
 
-    /// The US long-term gain after the interest-expense cap.
+    /// The US long-term capital gain.
     #[cfg(test)]
     pub(crate) fn gains_us_long(&self) -> UsdAmount {
-        self.gains_us_long
+        self.gain_matrix.us_long.gain()
     }
 
-    /// The US long-term trade proceeds.
+    /// The US long-term trade proceeds, with the fee coin proceeds.
     #[cfg(test)]
     pub(crate) fn us_long_trade_proceeds(&self) -> UsdAmount {
         self.gain_matrix.us_long.trade_proceeds
@@ -669,16 +700,22 @@ impl Sums {
         self.gain_matrix.us_long.trade_basis
     }
 
-    /// The US long-term trade gain before the interest-expense cap.
+    /// The sum of the US long-term net gains of each portion, before the sale expenses.
     #[cfg(test)]
     pub(crate) fn us_long_trade_gain(&self) -> UsdAmount {
         self.gain_matrix.us_long.trade_gain
     }
 
-    /// The US long-term investment interest expense (payment-time value).
+    /// The US long-term sale expenses.
     #[cfg(test)]
-    pub(crate) fn us_long_position_fees(&self) -> UsdAmount {
-        self.gain_matrix.us_long.position_fees
+    pub(crate) fn us_long_fees(&self) -> UsdAmount {
+        self.gain_matrix.us_long.fees
+    }
+
+    /// The US short-term sale expenses.
+    #[cfg(test)]
+    pub(crate) fn us_short_fees(&self) -> UsdAmount {
+        self.gain_matrix.us_short.fees
     }
 
     /// The total ledger proceeds (worksheet column I).
@@ -688,73 +725,39 @@ impl Sums {
     }
 
     /// Assert that the calculated error checks are zero (within EPSILON tolerance).
+    ///
+    /// The first check compares the ledger proceeds with the proceeds of the trade atoms, the
+    /// position atoms, and the income atoms. The second check compares, in each cell, the sum of
+    /// the folded net gains with the identity of `GainCell::gain`.
+    // Section 3, Sums Table :: Step 4, Error Check
     pub fn assert_error_check(&self) {
-        let us_short = &self.gain_matrix.us_short;
-        let us_long = &self.gain_matrix.us_long;
-        let bona_fide_short = self.gain_matrix.bona_fide_short.clone().unwrap_or_default();
-        let bona_fide_long = self.gain_matrix.bona_fide_long.clone().unwrap_or_default();
-
-        let proceeds = self.gain_matrix.income
-            + us_short.trade_proceeds
-            + us_long.trade_proceeds
-            + us_short.position_proceeds
-            + bona_fide_short.trade_proceeds
-            + bona_fide_long.trade_proceeds
-            + bona_fide_short.position_proceeds;
-
+        let proceeds = self.gain_matrix.event_proceeds;
         assert!(
             self.ledger_proceeds.is_fuzzy_eq(proceeds),
             "Expected {ledger_proceeds} ~= {proceeds}",
             ledger_proceeds = self.ledger_proceeds,
         );
-    }
-}
 
-impl GainMatrixShort {
-    /// Apply the interest expenses from the previous year and this year. Returns the gain and the
-    /// carryover for next year.
-    ///
-    /// The investment interest expense (`position_fees`) is stored in the positive convention:
-    /// the payment-time value of the rollover fees. The deduction is capped at the gain before
-    /// the expense; the excess carries over to the next tax year (unused until GitHub issue #3).
-    fn apply_interest_expenses(
-        &mut self,
-        _previous_carryover: UsdAmount,
-    ) -> (UsdAmount, UsdAmount) {
-        // TODO: apply interest investment expenses from the previous year.  GitHub issue #3
-        let gain_before = self.trade_gain + self.position_proceeds;
-        self.position_fees_min = gain_before
-            .min(self.position_fees)
-            .max(UsdAmount::default());
-
-        let gains = gain_before - self.position_fees_min;
-        let carryover = self.position_fees - self.position_fees_min;
-
-        (gains, carryover)
-    }
-}
-
-impl GainMatrixLong {
-    /// Apply the interest expenses from the previous year and this year.  GitHub issue #3
-    /// Returns the gain and the carryover for next year.
-    ///
-    /// The investment interest expense (`position_fees`) is stored in the positive convention:
-    /// the payment-time value of the rollover fees. The deduction is capped at the gain before
-    /// the expense; the excess carries over to the next tax year (unused until GitHub issue #3).
-    fn apply_interest_expenses(
-        &mut self,
-        _previous_carryover: UsdAmount,
-    ) -> (UsdAmount, UsdAmount) {
-        // TODO: apply interest investment expenses from the previous year.  GitHub issue #3
-        let gain_before = self.trade_gain;
-        self.position_fees_min = gain_before
-            .min(self.position_fees)
-            .max(UsdAmount::default());
-
-        let gains = gain_before - self.position_fees_min;
-        let carryover = self.position_fees - self.position_fees_min;
-
-        (gains, carryover)
+        let cells = [
+            ("US Short Term", Some(&self.gain_matrix.us_short)),
+            ("US Long Term", Some(&self.gain_matrix.us_long)),
+            (
+                "Non-US Short Term",
+                self.gain_matrix.bona_fide_short.as_ref(),
+            ),
+            ("Non-US Long Term", self.gain_matrix.bona_fide_long.as_ref()),
+        ];
+        for (name, cell) in cells
+            .into_iter()
+            .filter_map(|(name, cell)| cell.map(|c| (name, c)))
+        {
+            let folded = cell.trade_gain + cell.position_proceeds - cell.fees;
+            let gain = cell.gain();
+            assert!(
+                folded.is_fuzzy_eq(gain),
+                "Expected {name} gain {folded} ~= {gain}",
+            );
+        }
     }
 }
 
@@ -855,13 +858,13 @@ impl PrStatement24 {
     ) -> Self {
         let mut rows = Vec::new();
 
-        if let (Some(pr_gain), Some(bona_fide_long), Some(date_acquired), Some(date_sold)) = (
-            sums.gains_bona_fide_long,
+        if let (Some(bona_fide_long), Some(date_acquired), Some(date_sold)) = (
             &sums.gain_matrix.bona_fide_long,
             dates.lt_earliest_acquired,
             dates.lt_latest_sold,
         ) {
-            let us_gain = sums.gains_us_long;
+            let pr_gain = bona_fide_long.gain();
+            let us_gain = sums.gain_matrix.us_long.gain();
             let sale_price = bona_fide_long.trade_proceeds;
             let gain_or_loss = us_gain + pr_gain;
             let market_value = sale_price - pr_gain;
@@ -880,13 +883,13 @@ impl PrStatement24 {
             });
         }
 
-        if let (Some(pr_gain), Some(bona_fide_short), Some(date_acquired), Some(date_sold)) = (
-            sums.gains_bona_fide_short,
+        if let (Some(bona_fide_short), Some(date_acquired), Some(date_sold)) = (
             &sums.gain_matrix.bona_fide_short,
             dates.st_earliest_acquired,
             dates.st_latest_sold,
         ) {
-            let us_gain = sums.gains_us_short;
+            let pr_gain = bona_fide_short.gain();
+            let us_gain = sums.gain_matrix.us_short.gain();
             let sale_price = bona_fide_short.trade_proceeds;
             let gain_or_loss = us_gain + pr_gain;
             let market_value = sale_price - pr_gain;

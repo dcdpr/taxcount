@@ -563,7 +563,7 @@ macro_rules! match_one_tx_inner {
                 event.event_info.asset_out_exchange_rate = exchange_rate;
 
                 // Handle the fee
-                let (errors, fee_value) = event.add_fee(
+                let (errors, _fee_value) = event.add_fee(
                     fees.into_iter()
                         .map(|asset| asset.to_non_splittable())
                         .collect(),
@@ -610,9 +610,6 @@ macro_rules! match_one_tx_inner {
                             return vec![Err(PriceError::ExchangeRates(errors))];
                         }
                     }
-
-                    // Trade fees offset the trade atoms' proceeds.
-                    event.reduce_trade_proceeds(0, fee_value);
                 } else if let Some(LoanCapital {
                     role: Lender,
                     loan_id,
@@ -1140,10 +1137,10 @@ impl State {
                     event.event_info.asset_in_exchange_rate = Some(exchange_rate);
                     event.event_info.proceeds = row_proceeds.amount.get_value_usd(exchange_rate);
 
-                    // The position table is only used for debugging.
-                    if !row_proceeds.amount.is_zero() {
-                        event.add_position(row_proceeds.amount, &args.gain_config);
-                    }
+                    // A break-even close has a zero position atom, so the close is a sale and
+                    // its fee is an expense of the sale.
+                    // Section 1, Atoms :: Step 3, Position Atom on a Break-Even Close
+                    event.add_position(row_proceeds.amount, &args.gain_config);
                 }
                 Err(err) => errors.push(err.into()),
             }
@@ -1680,7 +1677,7 @@ where
 
     if !tx_info.fees.is_empty() {
         // The declared rate covers the fee asset.
-        let (errors, fee_value) = event.add_fee(
+        let (errors, _fee_value) = event.add_fee(
             tx_info
                 .fees
                 .iter()
@@ -1691,8 +1688,6 @@ where
             None,
         );
         if errors.is_empty() {
-            // Trade fees offset the trade atoms' proceeds.
-            event.reduce_trade_proceeds(0, fee_value);
             Ok(event)
         } else {
             Err(PriceError::ExchangeRates(errors))
@@ -1810,9 +1805,6 @@ where
         fee_rate,
     } = release;
 
-    // Atoms added before this call must not be modified by the pro-rata proceeds reduction below.
-    let trade_atom_start = event.event_details.len();
-
     if amount.is_negative() {
         match consume_poolasset(fifo, amount) {
             Ok(split_assets) => {
@@ -1863,13 +1855,9 @@ where
                 // `fee_rate` covers the fee asset when the event has a defined rate for it.
                 // Otherwise `add_fee` falls back to the fee asset's market rate at the event
                 // date-time.
-                let (fee_errors, fee_value) =
+                let (fee_errors, _fee_value) =
                     event.add_fee(split_assets, fee_rate, gain_config, Some(ledger_row_id));
                 errors.extend(fee_errors.into_iter().map(|error| error.into()));
-
-                // Trade fees offset the trade atoms' proceeds added by this same call: the trade
-                // atoms' and fee atoms' proceeds must sum to the event's total proceeds.
-                event.reduce_trade_proceeds(trade_atom_start, fee_value);
             }
             Err(error) => errors.push(error),
         }
@@ -2088,8 +2076,8 @@ mod tests {
         );
 
         // The event has two atoms: the trade atom (0.1 BTC) and the fee atom (0.0002 BTC).
-        // The trade atom's proceeds are reduced by the fee value, and the fee atom is valued at
-        // the event's definitional rate.
+        // The trade atom holds the full proceeds, and the fee atom is valued at the event's
+        // definitional rate.
         assert_eq!(event.event_details.len(), 2);
         match &event.event_details[0] {
             EventAtom::Trade {
@@ -2098,15 +2086,15 @@ mod tests {
                 net_gain,
             } => {
                 assert_eq!(asset_amount.to_decimal(), "-0.10000000".parse().unwrap());
-                // 3488.56 - (0.0002 * 34885.60)
                 assert_eq!(
                     *proceeds,
-                    UsdAmount::from("3481.58288".parse::<FiatAmount>().unwrap()),
+                    UsdAmount::from("3488.56".parse::<FiatAmount>().unwrap()),
                 );
                 match net_gain {
                     GainTerm::LongUs(us) => {
+                        // 3488.56 - 1042.3341672619628
                         let expected =
-                            UsdAmount::from("2439.2487127380372".parse::<FiatAmount>().unwrap());
+                            UsdAmount::from("2446.2258327380372".parse::<FiatAmount>().unwrap());
                         assert_eq!(us.net_gain, expected);
                         let expected =
                             UsdAmount::from("1042.3341672619628".parse::<FiatAmount>().unwrap());
@@ -2124,10 +2112,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.00020000".parse().unwrap());
                 // 0.0002 * 34885.60
@@ -2202,11 +2188,11 @@ mod tests {
     }
 
     /// Selling 0.15 BTC spanning two splits (0.06 @ $100, 0.09 @ $200) for 15,000 ZUSD with a 0.003
-    /// BTC fee. The fee value (300 USD) must be split pro-rata across the two trade atoms (120 and
-    /// 180), so the trade atoms' and fee atom's proceeds sum to the event's total proceeds.
+    /// BTC fee. Each trade atom holds the full proceeds of its split, and the fee atom holds the
+    /// fee value (300 USD). The sums table subtracts the fee value from the gain of the sale.
     #[test]
     #[traced_test]
-    fn test_multi_split_sale_fee_pro_rata_reduction() {
+    fn test_multi_split_sale_fee() {
         let _ = tracing_log::LogTracer::init();
 
         let (mut state, exchange_rates_db) = setup_two_splits();
@@ -2265,10 +2251,10 @@ mod tests {
                     asset_amount,
                     &KrakenAmount::new("XXBT", "-0.06000000").unwrap(),
                 );
-                // 0.06 * 100000 - 0.06 * 2000 (pro-rata fee: 300 * 0.06/0.15)
+                // 0.06 * 100000
                 assert_eq!(
                     *proceeds,
-                    UsdAmount::from("5880.00".parse::<FiatAmount>().unwrap()),
+                    UsdAmount::from("6000.00".parse::<FiatAmount>().unwrap()),
                 );
                 match net_gain {
                     GainTerm::LongUs(us) => {
@@ -2278,7 +2264,7 @@ mod tests {
                         );
                         assert_eq!(
                             us.net_gain,
-                            UsdAmount::from("5874.00".parse::<FiatAmount>().unwrap()),
+                            UsdAmount::from("5994.00".parse::<FiatAmount>().unwrap()),
                         );
                         assert_eq!(us.basis_date, get_datetime("2019-09-08 19:38:42"));
                     }
@@ -2298,10 +2284,10 @@ mod tests {
                     asset_amount,
                     &KrakenAmount::new("XXBT", "-0.09000000").unwrap(),
                 );
-                // 0.09 * 100000 - 180 (remainder of the fee value, absorbed by the last atom)
+                // 0.09 * 100000
                 assert_eq!(
                     *proceeds,
-                    UsdAmount::from("8820.00".parse::<FiatAmount>().unwrap()),
+                    UsdAmount::from("9000.00".parse::<FiatAmount>().unwrap()),
                 );
                 match net_gain {
                     GainTerm::LongUs(us) => {
@@ -2311,7 +2297,7 @@ mod tests {
                         );
                         assert_eq!(
                             us.net_gain,
-                            UsdAmount::from("8802.00".parse::<FiatAmount>().unwrap()),
+                            UsdAmount::from("8982.00".parse::<FiatAmount>().unwrap()),
                         );
                         assert_eq!(us.basis_date, get_datetime("2024-03-01 12:00:00"));
                     }
@@ -2326,10 +2312,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(
                     asset_amount,
@@ -2366,18 +2350,25 @@ mod tests {
             sums.ledger_proceeds(),
             UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
         );
+        // The trade atoms (15000) and the fee atom (300).
         assert_eq!(
             sums.us_long_trade_proceeds(),
-            UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
+            UsdAmount::from("15300.00".parse::<FiatAmount>().unwrap()),
         );
         assert_eq!(
             sums.us_long_trade_basis(),
             UsdAmount::from("24.60".parse::<FiatAmount>().unwrap()),
         );
+        // 5994 + 8982 + 299.40
         assert_eq!(
             sums.us_long_trade_gain(),
-            UsdAmount::from("14975.40".parse::<FiatAmount>().unwrap()),
+            UsdAmount::from("15275.40".parse::<FiatAmount>().unwrap()),
         );
+        assert_eq!(
+            sums.us_long_fees(),
+            UsdAmount::from("300.00".parse::<FiatAmount>().unwrap()),
+        );
+        // 15300 - 24.60 - 300
         assert_eq!(
             sums.gains_us_long(),
             UsdAmount::from("14975.40".parse::<FiatAmount>().unwrap()),
@@ -2464,10 +2455,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(
                     asset_amount,
@@ -2671,8 +2660,8 @@ mod tests {
                 net_gain,
             } => {
                 assert_eq!(asset_amount.to_decimal(), "-1.00000000".parse().unwrap());
-                // 1.00 BTC * $1,000, reduced by the fee value (0.008 BTC * $1,000).
-                assert_eq!(*proceeds, usd("992.0000"));
+                // 1.00 BTC * $1,000. The fee value (0.008 BTC * $1,000) is in the fee atom.
+                assert_eq!(*proceeds, usd("1000.0000"));
                 let us = if trade.3 {
                     long_us(net_gain)
                 } else {
@@ -2692,10 +2681,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.00800000".parse().unwrap());
                 assert_eq!(*proceeds, usd("8.0000"));
@@ -2750,12 +2737,14 @@ mod tests {
         // - 0.008 from the 2026 split (fee atom)
         assert_sale(
             &events,
-            ("2020-05-15 11:00:00", "10.0800", "981.9200", true),
+            ("2020-05-15 11:00:00", "10.0800", "989.9200", true),
             ("2026-01-10 10:00:00", "8.0640", "-0.0640", false),
         );
 
         let db = rates(&["2026-07-20"], &["2026-07-20"]);
         let sums = sums(events);
+        // The $8 fee is an expense of the LT sale: 1000 - 10.08 - 8.
+        assert_eq!(sums.us_long_fees(), usd("8.0000"));
         assert_eq!(sums.gains_us_long(), usd("981.9200"));
         assert_eq!(sums.gains_us_short(), usd("-0.0640"));
 
@@ -2792,12 +2781,14 @@ mod tests {
         // the 2020-05-15 off-exchange split ($10, LT) pays the fee.
         assert_sale(
             &events,
-            ("2026-01-10 10:00:00", "1008.0000", "-16.0000", false),
+            ("2026-01-10 10:00:00", "1008.0000", "-8.0000", false),
             ("2020-05-15 12:00:00", "0.0800", "7.9200", true),
         );
 
         let db = rates(&["2026-07-20"], &["2026-07-20"]);
         let sums = sums(events);
+        // The $8 fee is an expense of the ST sale: 1000 - 1008 - 8.
+        assert_eq!(sums.us_short_fees(), usd("8.0000"));
         assert_eq!(sums.gains_us_long(), usd("7.9200"));
         assert_eq!(sums.gains_us_short(), usd("-16.0000"));
 
@@ -2829,12 +2820,13 @@ mod tests {
         // Sale: same as st-sale-lt-fee.
         assert_sale(
             &events,
-            ("2026-01-10 10:00:00", "1008.0000", "-16.0000", false),
+            ("2026-01-10 10:00:00", "1008.0000", "-8.0000", false),
             ("2020-05-15 12:00:00", "0.0800", "7.9200", true),
         );
 
-        // Margin open fee: 0.02 BTC from the LT split. A nondeductible carrying cost:
-        // a `Fee` atom (not `InvestmentFee`), proceeds go nowhere.
+        // Margin open fee: 0.02 BTC from the LT split. A carrying cost with no deduction: a
+        // `Fee` atom (not `InvestmentFee`) in an event that is not a sale, so the fee value is
+        // not an expense of a sale.
         let margin_open = find_event(&events, "2026-07-25 08:00:00", |s| {
             matches!(s, EventSubType::MarginOpen)
         });
@@ -2845,10 +2837,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
                 assert_eq!(*proceeds, usd("20.0000"));
@@ -2891,12 +2881,13 @@ mod tests {
 
         let db = rates(&["2026-07-20", "2026-07-25", "2026-07-26"], &["2026-07-20"]);
         let sums = sums(events);
-        // LT trade gain: 7.92 (sale fee) + 19.80 (open fee) + 5 * 19.80 (rollover fees).
+        // LT fee coin gains: 7.92 (sale fee) + 19.80 (open fee) + 5 * 19.80 (rollover fees).
         assert_eq!(sums.us_long_trade_gain(), usd("126.7200"));
-        // The rollover fee values ($100) are capped investment interest expense.
-        assert_eq!(sums.us_long_position_fees(), usd("100.0000"));
-        // 126.72 - 100 = 26.72, no carryover. ST is the sale's -$16 loss.
-        assert_eq!(sums.gains_us_long(), usd("26.7200"));
+        // The open fee and the rollover fees are not expenses of a sale. The rollover fee values
+        // ($100) are investment interest, a Form 4952 item outside the capital gain.
+        assert_eq!(sums.us_long_fees(), usd("0.0000"));
+        assert_eq!(sums.gains_us_long(), usd("126.7200"));
+        // ST is the sale's -$8 loss minus the $8 sale fee.
         assert_eq!(sums.gains_us_short(), usd("-16.0000"));
         // Total proceeds: 1.00 BTC at the defined rate of $1,000.
         assert_eq!(sums.ledger_proceeds(), usd("1000.0000"));
@@ -2946,10 +2937,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount, &KrakenAmount::new("ZUSD", "-0.5000").unwrap(),);
                 assert_eq!(*proceeds, usd("0.5000"));
@@ -2967,10 +2956,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert_eq!(ledger_row_id.as_deref(), Some("ca5e04-1ed9e-000004"));
                 assert_eq!(
                     asset_amount,

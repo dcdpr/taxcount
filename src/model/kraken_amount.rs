@@ -810,16 +810,6 @@ impl fmt::Display for KrakenAmount {
 }
 
 impl UsdAmount {
-    /// Get the minimum between two [`UsdAmount`]s.
-    pub(crate) fn min(self, other: Self) -> Self {
-        Self(FiatAmount(self.0 .0.min(other.0 .0)))
-    }
-
-    /// Get the maximum between two [`UsdAmount`]s.
-    pub(crate) fn max(self, other: Self) -> Self {
-        Self(FiatAmount(self.0 .0.max(other.0 .0)))
-    }
-
     #[cfg(test)]
     pub(crate) fn from_int(n: i64) -> Self {
         Self(FiatAmount(Decimal::from(n)))

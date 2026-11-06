@@ -57,35 +57,34 @@ pub(crate) struct EventInfo {
 pub(crate) enum EventAtom {
     /// The taxable asset (outgoing) is disposed of in a trade.
     Trade {
-        asset_amount: KrakenAmount, // Column C
-        proceeds: UsdAmount,        // Column D
-        net_gain: GainTerm,         // Columns E-...
+        asset_amount: KrakenAmount, // Column D
+        proceeds: UsdAmount,        // Column E
+        net_gain: GainTerm,         // Columns G-P
     },
 
     /// The taxable asset (incoming) is received as income.
     Income {
-        asset_amount: KrakenAmount, // Column C
-        proceeds: UsdAmount,        // Column D
+        asset_amount: KrakenAmount, // Column D
+        proceeds: UsdAmount,        // Column E
     },
 
     /// The asset is loaned (margin position). There is no cost basis, because the asset is
     /// loaned.
     Position {
-        asset_amount: KrakenAmount,            // Column C
-        proceeds_us: UsdAmount,                // Column D
-        proceeds_bona_fide: Option<UsdAmount>, // Column E
+        asset_amount: KrakenAmount, // Column D
+        proceeds_us: UsdAmount,
+        proceeds_bona_fide: Option<UsdAmount>,
     },
 
     /// A fee paid from the pool. `proceeds` is the USD value of the fee at the moment of
-    /// payment; `net_gain` is the difference between that value and the fee coin's cost basis.
+    /// payment. `net_gain` is the difference between that value and the fee coin's cost basis.
+    ///
+    /// When the event has a trade atom or a position atom, the fee value is also an expense of
+    /// the sale, and the sums table subtracts it from the gain of the sale.
     Fee {
-        asset_amount: KrakenAmount, // Column C
-        proceeds: UsdAmount,        // Column D
-        net_gain: GainTerm,         // Columns E-...
-
-        /// True when the fee offsets the trade atoms' proceeds on the same ledger row as the
-        /// outgoing amount. Only then do the fee's proceeds count in the trade cells.
-        reduces_proceeds: bool,
+        asset_amount: KrakenAmount, // Column D
+        proceeds: UsdAmount,        // Column E
+        net_gain: GainTerm,         // Columns G-P
 
         /// The txid of the ledger row that paid this fee, when it is not the event's own row.
         ledger_row_id: Option<String>,
@@ -93,9 +92,9 @@ pub(crate) enum EventAtom {
 
     /// An investment interest expense (margin position rollover).
     InvestmentFee {
-        asset_amount: KrakenAmount, // Column C
-        proceeds: UsdAmount,        // Column D
-        net_gain: GainTerm,         // Columns E-...
+        asset_amount: KrakenAmount, // Column D
+        proceeds: UsdAmount,        // Column E
+        net_gain: GainTerm,         // Columns G-P
 
         /// The txid of the ledger row that paid this fee, when it is not the event's own row.
         ledger_row_id: Option<String>,
@@ -405,92 +404,6 @@ impl Event {
 
         (errors, fee_value)
     }
-
-    /// Reduce the proceeds of the trade atoms added after `start`, pro-rata to each atom's amount
-    /// so that the sum of the reductions is exactly `fee_value`.
-    ///
-    /// Trade fees offset the trade atoms' proceeds: the trade atoms' and fee atoms' proceeds must
-    /// sum to the event's total proceeds. The fee atoms added after `start` are marked with
-    /// `reduces_proceeds`, so their proceeds count in the trade cells.
-    pub(crate) fn reduce_trade_proceeds(&mut self, start: usize, fee_value: UsdAmount) {
-        if fee_value == UsdAmount::default() {
-            return;
-        }
-
-        // The trade atoms and the fee are denominated in the same asset (both are consumed from the
-        // event's pool), and every trade atom in an event is valued at the event's single
-        // definitional rate, so the pro-rata share of the fee by proceeds equals the pro-rata
-        // share by amount.
-        let mut total_amount: Option<KrakenAmount> = None;
-        for atom in self.event_details.iter().skip(start) {
-            if let EventAtom::Trade { asset_amount, .. } = atom {
-                total_amount = Some(match total_amount {
-                    Some(total) => total + asset_amount.abs(),
-                    None => asset_amount.abs(),
-                });
-            }
-        }
-        let Some(total_amount) = total_amount else {
-            return;
-        };
-
-        // The fee's USD value per unit of the traded amount (the one division of this pro-rata
-        // split).
-        let fee_value_per_unit = fee_value.sub_divide(total_amount);
-
-        // Find the last trade atom so any rounding difference lands there and the reductions sum
-        // to exactly `fee_value`.
-        let last_trade = self
-            .event_details
-            .iter()
-            .enumerate()
-            .skip(start)
-            .rev()
-            .find_map(|(i, atom)| matches!(atom, EventAtom::Trade { .. }).then_some(i));
-
-        let mut applied = UsdAmount::default();
-        for (i, atom) in self.event_details.iter_mut().enumerate().skip(start) {
-            match atom {
-                EventAtom::Trade {
-                    asset_amount,
-                    proceeds,
-                    net_gain,
-                } => {
-                    let reduction = if Some(i) == last_trade {
-                        fee_value - applied
-                    } else {
-                        asset_amount.abs().get_value_usd(fee_value_per_unit)
-                    };
-                    applied += reduction;
-                    *proceeds = *proceeds - reduction;
-
-                    // Keep the gain portion(s) consistent with the reduced proceeds: each portion's
-                    // net gain is its proceeds minus its basis. For split (US/territory) gains,
-                    // only the territory portion's proceeds change; the US portion's gain is
-                    // `bona_fide_basis - basis` and does not depend on the sale proceeds.
-                    match net_gain {
-                        GainTerm::ShortUs(us) | GainTerm::LongUs(us) => {
-                            us.net_gain = *proceeds - us.basis;
-                        }
-                        GainTerm::ShortBonaFide(bf) | GainTerm::LongBonaFide(bf) => {
-                            bf.net_gain = *proceeds - bf.basis;
-                        }
-                        GainTerm::Short { bona_fide, .. } | GainTerm::Long { bona_fide, .. } => {
-                            bona_fide.net_gain = *proceeds - bona_fide.basis;
-                        }
-                    }
-                }
-                EventAtom::Fee {
-                    reduces_proceeds, ..
-                } => {
-                    // This fee atom's proceeds count in the trade cells: they offset the trade
-                    // atoms' proceeds reduced above.
-                    *reduces_proceeds = true;
-                }
-                _ => {}
-            }
-        }
-    }
 }
 
 impl EventInfo {
@@ -755,7 +668,6 @@ impl EventAtom {
                 asset_amount: -asset_fee, // Fees are always outgoing.
                 proceeds,
                 net_gain,
-                reduces_proceeds: false,
                 ledger_row_id: ledger_row_id.clone(),
             })
         }
