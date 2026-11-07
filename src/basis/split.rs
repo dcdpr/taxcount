@@ -3,7 +3,7 @@ use super::{Asset, AssetName, BasisLifecycle, PoolAsset, PoolAssetSplit, ToNonSp
 use crate::imports::wallet::{LoanRole, Tx, TxType};
 use crate::model::blockchain::{BlockchainExt, TimeOrderedBlockchain};
 use crate::model::checkpoint::{Pending, PendingAccountTx, PendingTxInfo, PendingUtxo, State};
-use crate::model::events::{Event, GainConfig, WalletDirection};
+use crate::model::events::{Event, EventAtom, FeeKind, GainConfig, WalletDirection};
 use crate::model::kraken_amount::{BitcoinAmount, EthWAmount, EtherAmount, UsdcAmount, UsdtAmount};
 use crate::model::kraken_amount::{FiatAmount, KrakenAmount, UsdAmount};
 use crate::model::ledgers::parsed::{LedgerMarginClose, MarginFeeRow};
@@ -335,12 +335,14 @@ macro_rules! match_one_tx_inner {
                 }
             };
 
-            // No defined rate covers the fee asset: the market rate is used.
+            // No defined rate covers the fee asset: the market rate is used. A transfer has no
+            // trade atoms: the fee is paid from the pool.
             let (errors, _fee_value) = event.add_fee(
                 fee.into_iter()
                     .map(|asset| asset.to_non_splittable())
                     .collect(),
                 None,
+                FeeKind::FromPool,
                 &$args.gain_config,
                 None,
             );
@@ -518,10 +520,6 @@ macro_rules! match_one_tx_inner {
                     None => return vec![Err(wallet_needs_basis())],
                 };
 
-                // Set the event's proceeds.
-                event.event_info.proceeds =
-                    KrakenAmount::from(basis.amount()).get_value_usd(exchange_rate.unwrap());
-
                 let errors = event.add_income(basis.iter());
                 if !errors.is_empty() {
                     return errors.into_iter().map(|err| Err(err.into())).collect();
@@ -562,12 +560,23 @@ macro_rules! match_one_tx_inner {
                 // The declared rate covers the fee asset.
                 event.event_info.asset_out_exchange_rate = exchange_rate;
 
+                // Returning loan capital or collateral is taxed as a sale of the asset: the fee
+                // offsets the trade proceeds. Lending out capital and posting collateral only
+                // suspend the basis: the fee is paid from the pool.
+                let fee_kind = match $tx.tx_type.as_ref() {
+                    Some(
+                        LoanCapital { role: Borrower, .. } | LoanCollateral { role: Lender, .. },
+                    ) => FeeKind::Trade,
+                    _ => FeeKind::FromPool,
+                };
+
                 // Handle the fee
                 let (errors, fee_value) = event.add_fee(
                     fees.into_iter()
                         .map(|asset| asset.to_non_splittable())
                         .collect(),
                     exchange_rate,
+                    fee_kind,
                     &$args.gain_config,
                     None,
                 );
@@ -594,13 +603,11 @@ macro_rules! match_one_tx_inner {
                     // rate be defined in both places (receives and returns), but we don't check
                     // that they match.
 
+                    if exchange_rate.is_none() {
+                        return vec![Err(loan_needs_basis())];
+                    }
+
                     for (_txid, basis) in txos.drain() {
-                        event.event_info.proceeds += match exchange_rate {
-                            Some(exchange_rate) => {
-                                KrakenAmount::from(basis.amount()).get_value_usd(exchange_rate)
-                            }
-                            None => return vec![Err(loan_needs_basis())],
-                        };
                         let split_assets = basis
                             .into_iter()
                             .map(|pool_asset| pool_asset.to_non_splittable())
@@ -935,7 +942,6 @@ impl State {
 
                 event.event_info.asset_out_exchange_rate = Some(asset_out_exchange_rate);
                 event.event_info.asset_in_exchange_rate = Some(asset_in_exchange_rate);
-                event.event_info.proceeds = b.get_value_usd(asset_out_exchange_rate);
             };
 
             if row_in.amount.is_positive() {
@@ -1138,7 +1144,6 @@ impl State {
                 Ok(exchange_rate) => {
                     debug!("handle_margin_close() exchange_rate: {exchange_rate:?}");
                     event.event_info.asset_in_exchange_rate = Some(exchange_rate);
-                    event.event_info.proceeds = row_proceeds.amount.get_value_usd(exchange_rate);
 
                     // The position table is only used for debugging.
                     if !row_proceeds.amount.is_zero() {
@@ -1665,10 +1670,6 @@ where
         None => return Err(wallet_needs_basis()),
     };
 
-    // Add proceeds for gains error check.
-    let exchange_rate = event.event_info.asset_out_exchange_rate.unwrap();
-    event.event_info.proceeds = KrakenAmount::from(basis.amount()).get_value_usd(exchange_rate);
-
     let split_assets = basis
         .into_iter()
         .map(|pool_asset| pool_asset.to_non_splittable())
@@ -1679,7 +1680,9 @@ where
     }
 
     if !tx_info.fees.is_empty() {
-        // The declared rate covers the fee asset.
+        // The declared rate covers the fee asset. The trade atoms were added above (the event is
+        // discarded if that failed) and this fee is paid from the spent asset, so it is a trade
+        // fee that offsets the trade proceeds.
         let (errors, fee_value) = event.add_fee(
             tx_info
                 .fees
@@ -1687,6 +1690,7 @@ where
                 .map(|asset| asset.to_non_splittable())
                 .collect(),
             event.event_info.asset_out_exchange_rate,
+            FeeKind::Trade,
             gain_config,
             None,
         );
@@ -1766,13 +1770,15 @@ where
 
     // If pending spend has a fee basis, return a new event.
     if let Some(fee_basis) = pending_spends.fee_basis(time, &txid) {
-        // No defined rate covers the fee asset: the market rate is used.
+        // No defined rate covers the fee asset: the market rate is used. This event has no trade
+        // atoms: the fee is paid from the pool.
         let (errors, _fee_value) = event.add_fee(
             fee_basis
                 .iter()
                 .map(|asset| asset.to_non_splittable())
                 .collect(),
             None,
+            FeeKind::FromPool,
             gain_config,
             None,
         );
@@ -1860,11 +1866,31 @@ where
                     .map(|asset| asset.to_non_splittable())
                     .collect();
 
+                // The fee is a trade fee only when the trade atoms were actually added above: a
+                // trade fee's proceeds count in the event's total proceeds, so they must offset
+                // the trade proceeds reduced below. (Margin rollovers release no trade asset:
+                // their fees become investment fee atoms regardless of this flag.)
+                let fee_kind = if event
+                    .event_details
+                    .iter()
+                    .skip(trade_atom_start)
+                    .any(|atom| matches!(atom, EventAtom::Trade { .. }))
+                {
+                    FeeKind::Trade
+                } else {
+                    FeeKind::FromPool
+                };
+
                 // `fee_rate` covers the fee asset when the event has a defined rate for it.
                 // Otherwise `add_fee` falls back to the fee asset's market rate at the event
                 // date-time.
-                let (fee_errors, fee_value) =
-                    event.add_fee(split_assets, fee_rate, gain_config, Some(ledger_row_id));
+                let (fee_errors, fee_value) = event.add_fee(
+                    split_assets,
+                    fee_rate,
+                    fee_kind,
+                    gain_config,
+                    Some(ledger_row_id),
+                );
                 errors.extend(fee_errors.into_iter().map(|error| error.into()));
 
                 // Trade fees offset the trade atoms' proceeds added by this same call: the trade
@@ -2083,7 +2109,7 @@ mod tests {
             Some(UsdAmount::from("1.0000".parse::<FiatAmount>().unwrap())),
         );
         assert_eq!(
-            event.event_info.proceeds,
+            event.proceeds(),
             UsdAmount::from("3488.56".parse::<FiatAmount>().unwrap()),
         );
 
@@ -2120,14 +2146,12 @@ mod tests {
         }
 
         match &event.event_details[1] {
-            EventAtom::Fee {
+            EventAtom::TradeFee {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.00020000".parse().unwrap());
                 // 0.0002 * 34885.60
@@ -2249,7 +2273,7 @@ mod tests {
         let event = &actual[0].as_ref().unwrap();
 
         assert_eq!(
-            event.event_info.proceeds,
+            event.proceeds(),
             UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
         );
         // Two trade atoms (one per split) and one fee atom.
@@ -2322,14 +2346,12 @@ mod tests {
         }
 
         match &event.event_details[2] {
-            EventAtom::Fee {
+            EventAtom::TradeFee {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(
                     asset_amount,
@@ -2366,9 +2388,15 @@ mod tests {
             sums.ledger_proceeds(),
             UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
         );
+        // The trade atoms' proceeds net of the pro-rata fee reduction.
         assert_eq!(
             sums.us_long_trade_proceeds(),
-            UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
+            UsdAmount::from("14700.00".parse::<FiatAmount>().unwrap()),
+        );
+        // The fee atom's proceeds (which reduced the trade atoms' proceeds) are separate.
+        assert_eq!(
+            sums.us_long_trade_fee_proceeds(),
+            UsdAmount::from("300.00".parse::<FiatAmount>().unwrap()),
         );
         assert_eq!(
             sums.us_long_trade_basis(),
@@ -2464,10 +2492,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(
                     asset_amount,
@@ -2685,17 +2711,15 @@ mod tests {
             other => panic!("expected trade atom, got {other:?}"),
         }
 
-        let fee_atoms = atoms_of(sale, |a| matches!(a, EventAtom::Fee { .. }));
+        let fee_atoms = atoms_of(sale, |a| matches!(a, EventAtom::TradeFee { .. }));
         assert_eq!(fee_atoms.len(), 1);
         match fee_atoms[0] {
-            EventAtom::Fee {
+            EventAtom::TradeFee {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.00800000".parse().unwrap());
                 assert_eq!(*proceeds, usd("8.0000"));
@@ -2845,10 +2869,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount.to_decimal(), "-0.02000000".parse().unwrap());
                 assert_eq!(*proceeds, usd("20.0000"));
@@ -2893,10 +2915,11 @@ mod tests {
         let sums = sums(events);
         // LT trade gain: 7.92 (sale fee) + 19.80 (open fee) + 5 * 19.80 (rollover fees).
         assert_eq!(sums.us_long_trade_gain(), usd("126.7200"));
-        // The rollover fee values ($100) are capped investment interest expense.
+        // The rollover fee values ($100) are investment interest expense, reported on the Form 4952
+        // worksheet rather than reducing the capital gain.
         assert_eq!(sums.us_long_position_fees(), usd("100.0000"));
-        // 126.72 - 100 = 26.72, no carryover. ST is the sale's -$16 loss.
-        assert_eq!(sums.gains_us_long(), usd("26.7200"));
+        // The gain is the trade gain before the interest expense. ST is the sale's -$16 loss.
+        assert_eq!(sums.gains_us_long(), usd("126.7200"));
         assert_eq!(sums.gains_us_short(), usd("-16.0000"));
         // Total proceeds: 1.00 BTC at the defined rate of $1,000.
         assert_eq!(sums.ledger_proceeds(), usd("1000.0000"));
@@ -2946,10 +2969,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert!(ledger_row_id.is_none());
                 assert_eq!(asset_amount, &KrakenAmount::new("ZUSD", "-0.5000").unwrap(),);
                 assert_eq!(*proceeds, usd("0.5000"));
@@ -2967,10 +2988,8 @@ mod tests {
                 asset_amount,
                 proceeds,
                 net_gain,
-                reduces_proceeds,
                 ledger_row_id,
             } => {
-                assert!(!*reduces_proceeds);
                 assert_eq!(ledger_row_id.as_deref(), Some("ca5e04-1ed9e-000004"));
                 assert_eq!(
                     asset_amount,

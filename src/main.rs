@@ -19,9 +19,8 @@ use taxcount::errors::{BitcoindClientError, EsploraClientError};
 use taxcount::imports::kraken::{read_basis_lookup, read_ledgers, read_trades};
 use taxcount::imports::wallet::{self, electrum, ledgerlive};
 use taxcount::model::{constants, exchange::Balances, ledgers::parsed::LedgerParsed};
-use taxcount::model::{
-    CapGainsWorksheet, ExchangeRates, GainConfig, PrStatement24, State, Stats, WorksheetName,
-};
+use taxcount::model::{CapGainsWorksheet, ExchangeRates, GainConfig, State, Stats, WorksheetName};
+use taxcount::model::{Form4952, PrStatement24};
 use taxcount::util::{fifo::FIFO, year_ext::CheckYearsExt as _};
 use taxcount::{bdk::bitcoin::Network, gitver_hashes};
 use thiserror::Error;
@@ -493,6 +492,7 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
     }
 
     let mut pr_statement24_rows: Vec<PrStatement24> = Vec::new();
+    let mut form_4952 = None;
 
     for (worksheet_name, events) in worksheets.into_iter() {
         let underline = "=".repeat(worksheet_name.len());
@@ -567,6 +567,8 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
 
         sums.assert_error_check();
 
+        Form4952::accumulate(&mut form_4952, &sums);
+
         if bona_fide_residency.is_some() {
             let dates = worksheet.pr_statement24_dates();
             let name = WorksheetName::from(worksheet_name.to_string());
@@ -597,6 +599,28 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
             println!("== ============");
             println!();
             println!("{all_rows}");
+            println!();
+        }
+    }
+
+    // The Form 4952 worksheet is written only when the tax year has investment interest expense.
+    if let Some(form_4952) = form_4952 {
+        if let Some(path) = args.worksheet_path.as_ref().map(|root| {
+            let filename = format!("{}form-4952.csv", args.worksheet_prefix);
+            root.join(filename)
+        }) {
+            std::fs::write(&path, form_4952.to_string())?;
+
+            let path = path.display();
+            let underline = "=".repeat(path.to_string().len());
+            println!("Form 4952 written to {path}");
+            println!("==== ==== ======= == {underline}");
+            println!();
+        } else {
+            println!("Form 4952");
+            println!("==== ====");
+            println!();
+            println!("{form_4952}");
             println!();
         }
     }
