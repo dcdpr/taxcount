@@ -39,9 +39,10 @@
       deduction, and is not part of the capital gain. Pub 550 writes the first rule as a mutation:
       the filer subtracts the fee from the proceeds of the sale, and then calculates the gain. From
       a functional programming view, that is wrong. The proceeds are the amount that the parties
-      agreed to transfer, and a subtraction inside that value hides the fee. taxcount keeps the full
-      proceeds in the Trade atom and the fee value in the Fee atom, and the summation subtracts the
-      "Fees" row from the gain. The gain is the same number, and each atom keeps its own fact.
+      agreed to transfer, and a subtraction inside that value hides the fee. taxcount keeps the
+      full proceeds in the Trade atom and the fee value in the Fee atom, and the summation
+      subtracts the "Fees" row from the gain. The gain is the same number, and each atom keeps its
+      own fact.
     - The first problem is in CapGainsWorksheet::fold_gain_term() in src/model/gains.rs. For
       GainTerm::Short { us, bona_fide } and GainTerm::Long { us, bona_fide }, it adds us.basis and
       us.net_gain to the US column. It does not add the proceeds. For GainTerm::ShortUs and
@@ -148,3 +149,11 @@
       coin on a buy. A buy may be peer-to-peer with a network fee, the lot has the full transaction
       value, and the Fee atom disposes the fee coins from the pool. Pub 550 is one treatment, and
       the treatment is a design choice.
+    - [rgrant 20261107 01:59 UTC] Deleted EventInfo::proceeds. event_proceeds() in
+      src/model/events.rs calculates the sum of the proceeds of the Trade, Income, and Position
+      atoms of one Event. The "Proceeds" column of the worksheet CSV contains this sum.
+    - [rgrant 20261107 01:59 UTC] Deleted Sums::ledger_proceeds, GainMatrix::event_proceeds, and
+      the ledger proceeds check of assert_error_check(). Each handler calculated
+      EventInfo::proceeds from the same quantity and the same rate as the atoms.
+    - [rgrant 20261107 01:59 UTC] This change replaces the "Error Check" step of
+      issue-004-sums-fees.md, the ledger_proceeds text in the Analysis, and description item 8.

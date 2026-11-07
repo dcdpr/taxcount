@@ -1,7 +1,7 @@
 // 04 / Bona Fide Move-Date Value is required in ledgers-sums for reconciliation
 // issue-004-sums-fees.md
 
-use crate::model::events::{Event, EventAtom, EventSubType, GainPortion, GainTerm};
+use crate::model::events::{event_proceeds, Event, EventAtom, EventSubType, GainPortion, GainTerm};
 use crate::model::kraken_amount::{KrakenAmount, UsdAmount};
 use chrono::{DateTime, Utc};
 use std::fmt::Display;
@@ -23,8 +23,7 @@ struct CapGainsWorksheetRow {
     event_name: String,              // Column E (Debugging only.)
     asset_out_exchange_rate: String, // Column F (Debugging only.)
     asset_in_exchange_rate: String,  // Column G (Debugging only.)
-    proceeds: UsdAmount,             // Column H
-    event_details: Vec<EventAtom>,
+    event_details: Vec<EventAtom>,   // Column H is event_proceeds() of these atoms.
 }
 
 /// One line for each atom of each event: the ledger row, the atom, and the atom's share of the
@@ -41,7 +40,6 @@ pub struct CapGainsEventDetails<'a> {
 // Section 3, Sums Table :: Step 3, Sums Struct
 #[derive(Debug)]
 pub struct Sums {
-    ledger_proceeds: UsdAmount,
     gain_matrix: GainMatrix,
 }
 
@@ -51,10 +49,6 @@ pub struct Sums {
 /// `None` cell as blank.
 #[derive(Debug, Default)]
 struct GainMatrix {
-    /// The proceeds of each trade atom, position atom, and income atom: the amount that the
-    /// parties of each event agreed to transfer. The error check compares it with the ledger
-    /// proceeds.
-    event_proceeds: UsdAmount,
     us_short: GainCell,
     us_long: GainCell,
     bona_fide_short: Option<GainCell>,
@@ -141,7 +135,11 @@ impl Display for CapGainsWorksheetRow {
             asset_in_exchange_rate = self.asset_in_exchange_rate,
         )?;
         // Column H
-        write!(f, r#""{proceeds}""#, proceeds = self.proceeds)?;
+        write!(
+            f,
+            r#""{proceeds}""#,
+            proceeds = event_proceeds(&self.event_details)
+        )?;
 
         Ok(())
     }
@@ -425,11 +423,6 @@ impl CapGainsWorksheet {
 
     // Section 3, Sums Table :: Step 2, Rows
     pub fn sums(&self) -> Sums {
-        let ledger_proceeds = self
-            .worksheet
-            .iter()
-            .fold(UsdAmount::default(), |acc, row| acc + row.proceeds);
-
         let gain_matrix = self
             .worksheet
             .iter()
@@ -440,22 +433,17 @@ impl CapGainsWorksheet {
                         EventAtom::Trade {
                             proceeds, net_gain, ..
                         } => {
-                            acc.event_proceeds += *proceeds;
                             Self::fold_gain_term(&mut acc, net_gain, *proceeds);
                             if let Some(fee_share) = fee_share {
                                 acc.cell_mut(net_gain.sale_cell()).fees += fee_share;
                             }
                         }
-                        EventAtom::Income { proceeds, .. } => {
-                            acc.event_proceeds += *proceeds;
-                        }
+                        EventAtom::Income { .. } => {}
                         EventAtom::Position {
                             proceeds_us,
                             proceeds_bona_fide,
                             ..
                         } => {
-                            acc.event_proceeds +=
-                                *proceeds_us + proceeds_bona_fide.unwrap_or_default();
                             acc.us_short.position_proceeds += *proceeds_us;
 
                             if let Some(bona_fide) = *proceeds_bona_fide {
@@ -480,10 +468,7 @@ impl CapGainsWorksheet {
                 acc
             });
 
-        Sums {
-            ledger_proceeds,
-            gain_matrix,
-        }
+        Sums { gain_matrix }
     }
 
     /// Fold a disposal into the gains matrix: its proceeds into the sale cell, and the basis and
@@ -669,7 +654,6 @@ impl CapGainsWorksheetRow {
             event_name: event.event_info.event_name,
             asset_out_exchange_rate,
             asset_in_exchange_rate,
-            proceeds: event.event_info.proceeds,
             event_details: event.event_details,
         }
     }
@@ -718,26 +702,10 @@ impl Sums {
         self.gain_matrix.us_short.fees
     }
 
-    /// The total ledger proceeds (worksheet column I).
-    #[cfg(test)]
-    pub(crate) fn ledger_proceeds(&self) -> UsdAmount {
-        self.ledger_proceeds
-    }
-
-    /// Assert that the calculated error checks are zero (within EPSILON tolerance).
-    ///
-    /// The first check compares the ledger proceeds with the proceeds of the trade atoms, the
-    /// position atoms, and the income atoms. The second check compares, in each cell, the sum of
-    /// the folded net gains with the identity of `GainCell::gain`.
+    /// Assert that, in each cell, the sum of the folded net gains is equal to the identity of
+    /// `GainCell::gain`, in the EPSILON tolerance of `UsdAmount::is_fuzzy_eq`.
     // Section 3, Sums Table :: Step 4, Error Check
     pub fn assert_error_check(&self) {
-        let proceeds = self.gain_matrix.event_proceeds;
-        assert!(
-            self.ledger_proceeds.is_fuzzy_eq(proceeds),
-            "Expected {ledger_proceeds} ~= {proceeds}",
-            ledger_proceeds = self.ledger_proceeds,
-        );
-
         let cells = [
             ("US Short Term", Some(&self.gain_matrix.us_short)),
             ("US Long Term", Some(&self.gain_matrix.us_long)),

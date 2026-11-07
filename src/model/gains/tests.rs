@@ -29,11 +29,7 @@ fn portion(basis: i64, net_gain: i64, basis_date: DateTime<Utc>) -> GainPortion 
 }
 
 /// A worksheet with one event.
-fn worksheet(
-    event_subtype: EventSubType,
-    proceeds: UsdAmount,
-    event_details: Vec<EventAtom>,
-) -> CapGainsWorksheet {
+fn worksheet(event_subtype: EventSubType, event_details: Vec<EventAtom>) -> CapGainsWorksheet {
     CapGainsWorksheet {
         worksheet: vec![CapGainsWorksheetRow {
             event_date: date(2024, 6, 1),
@@ -43,7 +39,6 @@ fn worksheet(
             event_name: String::new(),
             asset_out_exchange_rate: String::new(),
             asset_in_exchange_rate: String::new(),
-            proceeds,
             event_details,
         }],
     }
@@ -66,7 +61,6 @@ fn pr_statement24_dates_from_fees_only() {
             event_name: String::new(),
             asset_out_exchange_rate: String::new(),
             asset_in_exchange_rate: String::new(),
-            proceeds: usd(0),
             event_details: vec![EventAtom::Fee {
                 asset_amount: KrakenAmount::Btc(BitcoinAmount::default()),
                 proceeds: usd(0),
@@ -91,7 +85,6 @@ fn pr_statement24_dates_from_fees_only() {
 fn test_regression_bona_fide_proceeds() {
     let worksheet = worksheet(
         EventSubType::Trade,
-        usd(1000),
         vec![EventAtom::Trade {
             asset_amount: btc("-1.00000000"),
             proceeds: usd(1000),
@@ -127,7 +120,6 @@ fn test_regression_bona_fide_proceeds() {
 fn trade_fee_cost_in_sale_cell() {
     let worksheet = worksheet(
         EventSubType::Trade,
-        usd(1000),
         vec![
             EventAtom::Trade {
                 asset_amount: btc("-1.00000000"),
@@ -172,7 +164,6 @@ fn trade_fee_cost_in_sale_cell() {
 fn trade_fee_cost_pro_rata_across_lots() {
     let worksheet = worksheet(
         EventSubType::Trade,
-        usd(15000),
         vec![
             EventAtom::Trade {
                 asset_amount: btc("-0.06000000"),
@@ -210,7 +201,6 @@ fn trade_fee_cost_pro_rata_across_lots() {
 fn margin_close_fee_cost_in_position_cell() {
     let worksheet = worksheet(
         EventSubType::MarginClose,
-        usd(500),
         vec![
             EventAtom::Position {
                 asset_amount: KrakenAmount::new("ZUSD", "500.0000").unwrap(),
@@ -248,7 +238,6 @@ fn margin_close_fee_cost_in_position_cell() {
 fn withdrawal_fee_is_disposal_only() {
     let worksheet = worksheet(
         EventSubType::Withdrawal,
-        usd(0),
         vec![EventAtom::Fee {
             asset_amount: btc("-0.00100000"),
             proceeds: usd(20),
@@ -277,7 +266,6 @@ fn withdrawal_fee_is_disposal_only() {
 fn rollover_fee_is_disposal_only() {
     let worksheet = worksheet(
         EventSubType::MarginRollover,
-        usd(0),
         vec![EventAtom::InvestmentFee {
             asset_amount: btc("-0.00100000"),
             proceeds: usd(20),
@@ -295,11 +283,51 @@ fn rollover_fee_is_disposal_only() {
     assert_eq!(us_long.gain(), usd(19));
 }
 
+/// The "Proceeds" column of the worksheet CSV is the sum of the trade, income, and position
+/// atoms. The fee atoms and the investment fee atoms are disposals of the fee coin, and the
+/// column does not include them.
+#[test]
+fn worksheet_proceeds_column_from_atoms() {
+    let worksheet = worksheet(
+        EventSubType::Trade,
+        vec![
+            EventAtom::Trade {
+                asset_amount: btc("-1.00000000"),
+                proceeds: usd(1000),
+                net_gain: GainTerm::LongUs(portion(10, 990, date(2020, 5, 15))),
+            },
+            EventAtom::Income {
+                asset_amount: btc("0.05000000"),
+                proceeds: usd(50),
+            },
+            EventAtom::Position {
+                asset_amount: KrakenAmount::new("ZUSD", "500.0000").unwrap(),
+                proceeds_us: usd(0),
+                proceeds_bona_fide: Some(usd(500)),
+            },
+            EventAtom::Fee {
+                asset_amount: btc("-0.00800000"),
+                proceeds: usd(8),
+                net_gain: GainTerm::ShortUs(portion(6, 2, date(2024, 1, 10))),
+                ledger_row_id: None,
+            },
+            EventAtom::InvestmentFee {
+                asset_amount: btc("-0.00300000"),
+                proceeds: usd(3),
+                net_gain: GainTerm::ShortUs(portion(1, 2, date(2024, 1, 10))),
+                ledger_row_id: None,
+            },
+        ],
+    );
+
+    let row = worksheet.worksheet[0].to_string();
+    assert!(row.ends_with(r#","1550.0000""#), "{row}");
+}
+
 #[test]
 fn sums_csv_rows() {
     let worksheet = worksheet(
         EventSubType::Trade,
-        usd(1000),
         vec![
             EventAtom::Trade {
                 asset_amount: btc("-1.00000000"),
@@ -340,9 +368,7 @@ fn sums_csv_rows() {
 #[test]
 fn pr_statement24_from_sums() {
     let sums = Sums {
-        ledger_proceeds: usd(0),
         gain_matrix: GainMatrix {
-            event_proceeds: usd(0),
             us_short: GainCell {
                 trade_proceeds: usd(50),
                 ..Default::default()

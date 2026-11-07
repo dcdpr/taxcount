@@ -41,7 +41,6 @@ pub(crate) struct EventInfo {
     pub(crate) event_name: String,          // Column E
     pub(crate) asset_out_exchange_rate: Option<UsdAmount>, // Column F
     pub(crate) asset_in_exchange_rate: Option<UsdAmount>, // Column G
-    pub(crate) proceeds: UsdAmount,         // Column I
 }
 
 /// Atomized details for a taxable event.
@@ -122,6 +121,28 @@ impl EventAtom {
             _ => None,
         }
     }
+}
+
+/// The USD value of the transfer of one event, from the atoms of that event.
+///
+/// The value is the sum of the `proceeds` of each `EventAtom::Trade` and `EventAtom::Income`,
+/// plus the `proceeds_us` and `proceeds_bona_fide` of each `EventAtom::Position`. The sum does
+/// not include `EventAtom::Fee` and `EventAtom::InvestmentFee`. Each of them is a disposal of the
+/// fee coin, with its own proceeds.
+pub(crate) fn event_proceeds(atoms: &[EventAtom]) -> UsdAmount {
+    atoms
+        .iter()
+        .fold(UsdAmount::default(), |acc, atom| match atom {
+            EventAtom::Trade { proceeds, .. } | EventAtom::Income { proceeds, .. } => {
+                acc + *proceeds
+            }
+            EventAtom::Position {
+                proceeds_us,
+                proceeds_bona_fide,
+                ..
+            } => acc + *proceeds_us + proceeds_bona_fide.unwrap_or_default(),
+            EventAtom::Fee { .. } | EventAtom::InvestmentFee { .. } => acc,
+        })
 }
 
 /// Capital gains are classified as either short-term or long-term, based on whether the asset has
@@ -422,7 +443,6 @@ impl EventInfo {
             event_name,
             asset_out_exchange_rate: None,
             asset_in_exchange_rate: None,
-            proceeds: UsdAmount::default(),
         }
     }
 }

@@ -518,10 +518,6 @@ macro_rules! match_one_tx_inner {
                     None => return vec![Err(wallet_needs_basis())],
                 };
 
-                // Set the event's proceeds.
-                event.event_info.proceeds =
-                    KrakenAmount::from(basis.amount()).get_value_usd(exchange_rate.unwrap());
-
                 let errors = event.add_income(basis.iter());
                 if !errors.is_empty() {
                     return errors.into_iter().map(|err| Err(err.into())).collect();
@@ -595,12 +591,10 @@ macro_rules! match_one_tx_inner {
                     // that they match.
 
                     for (_txid, basis) in txos.drain() {
-                        event.event_info.proceeds += match exchange_rate {
-                            Some(exchange_rate) => {
-                                KrakenAmount::from(basis.amount()).get_value_usd(exchange_rate)
-                            }
-                            None => return vec![Err(loan_needs_basis())],
-                        };
+                        // trade_from_split() requires the rate of the loan term.
+                        if exchange_rate.is_none() {
+                            return vec![Err(loan_needs_basis())];
+                        }
                         let split_assets = basis
                             .into_iter()
                             .map(|pool_asset| pool_asset.to_non_splittable())
@@ -932,7 +926,6 @@ impl State {
 
                 event.event_info.asset_out_exchange_rate = Some(asset_out_exchange_rate);
                 event.event_info.asset_in_exchange_rate = Some(asset_in_exchange_rate);
-                event.event_info.proceeds = b.get_value_usd(asset_out_exchange_rate);
             };
 
             if row_in.amount.is_positive() {
@@ -1135,7 +1128,6 @@ impl State {
                 Ok(exchange_rate) => {
                     debug!("handle_margin_close() exchange_rate: {exchange_rate:?}");
                     event.event_info.asset_in_exchange_rate = Some(exchange_rate);
-                    event.event_info.proceeds = row_proceeds.amount.get_value_usd(exchange_rate);
 
                     // A break-even close has a zero position atom, so the close is a sale and
                     // its fee is an expense of the sale.
@@ -1662,10 +1654,6 @@ where
         None => return Err(wallet_needs_basis()),
     };
 
-    // Add proceeds for gains error check.
-    let exchange_rate = event.event_info.asset_out_exchange_rate.unwrap();
-    event.event_info.proceeds = KrakenAmount::from(basis.amount()).get_value_usd(exchange_rate);
-
     let split_assets = basis
         .into_iter()
         .map(|pool_asset| pool_asset.to_non_splittable())
@@ -1910,7 +1898,7 @@ mod tests {
     use crate::imports::kraken::{read_ledgers, read_trades};
     use crate::imports::wallet::{Txi, Txo, TxoInfo};
     use crate::model::checkpoint::{Balances, CheckpointHeader, UtxoBalances};
-    use crate::model::events::{EventAtom, EventSubType, GainPortion, GainTerm};
+    use crate::model::events::{event_proceeds, EventAtom, EventSubType, GainPortion, GainTerm};
     use crate::model::exchange_rate::{ExchangeRateMap, ExchangeRates};
     use crate::model::{blockchain::Utxo, CapGainsWorksheet, Stats, Sums};
     use crate::model::{kraken_amount::PoolUsdAmount, ledgers::rows::LedgerRowTypical};
@@ -2071,7 +2059,7 @@ mod tests {
             Some(UsdAmount::from("1.0000".parse::<FiatAmount>().unwrap())),
         );
         assert_eq!(
-            event.event_info.proceeds,
+            event_proceeds(&event.event_details),
             UsdAmount::from("3488.56".parse::<FiatAmount>().unwrap()),
         );
 
@@ -2235,7 +2223,7 @@ mod tests {
         let event = &actual[0].as_ref().unwrap();
 
         assert_eq!(
-            event.event_info.proceeds,
+            event_proceeds(&event.event_details),
             UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
         );
         // Two trade atoms (one per split) and one fee atom.
@@ -2346,10 +2334,6 @@ mod tests {
         let owned_event = (**event).clone();
         let sums = CapGainsWorksheet::new(vec![owned_event]).sums();
         sums.assert_error_check();
-        assert_eq!(
-            sums.ledger_proceeds(),
-            UsdAmount::from("15000.00".parse::<FiatAmount>().unwrap()),
-        );
         // The trade atoms (15000) and the fee atom (300).
         assert_eq!(
             sums.us_long_trade_proceeds(),
@@ -2602,7 +2586,14 @@ mod tests {
         (state, events)
     }
 
-    /// Build the worksheet sums for the events, asserting the proceeds invariant.
+    /// The sum of event_proceeds() across the events.
+    fn total_proceeds(events: &[Event]) -> UsdAmount {
+        events.iter().fold(UsdAmount::default(), |acc, event| {
+            acc + event_proceeds(&event.event_details)
+        })
+    }
+
+    /// Build the worksheet sums for the events, and check the identity in each cell.
     fn sums(events: Vec<Event>) -> Sums {
         let sums = CapGainsWorksheet::new(events).sums();
         sums.assert_error_check();
@@ -2879,6 +2870,9 @@ mod tests {
             }
         }
 
+        // Total proceeds: 1.00 BTC at the defined rate of $1,000.
+        assert_eq!(total_proceeds(&events), usd("1000.0000"));
+
         let db = rates(&["2026-07-20", "2026-07-25", "2026-07-26"], &["2026-07-20"]);
         let sums = sums(events);
         // LT fee coin gains: 7.92 (sale fee) + 19.80 (open fee) + 5 * 19.80 (rollover fees).
@@ -2889,8 +2883,6 @@ mod tests {
         assert_eq!(sums.gains_us_long(), usd("126.7200"));
         // ST is the sale's -$8 loss minus the $8 sale fee.
         assert_eq!(sums.gains_us_short(), usd("-16.0000"));
-        // Total proceeds: 1.00 BTC at the defined rate of $1,000.
-        assert_eq!(sums.ledger_proceeds(), usd("1000.0000"));
 
         // Remaining BTC split: 0.872 at $10.
         assert_pool(&state.exchange_balances.btc, &db, "0.87200000", "10.0000");
@@ -2971,9 +2963,10 @@ mod tests {
             other => panic!("expected fee atom, got {other:?}"),
         }
 
+        assert_eq!(total_proceeds(&events), usd("0.0000"));
+
         let sums = sums(events);
         assert_eq!(sums.gains_us_long(), usd("0.0990"));
         assert_eq!(sums.gains_us_short(), usd("0.0000"));
-        assert_eq!(sums.ledger_proceeds(), usd("0.0000"));
     }
 }
