@@ -17,3 +17,5 @@ install_git_hooks = true
 proof_of_instruction = false
 rust_code = true
 
+[finish_issue]
+enforce_absolute_paths = false
