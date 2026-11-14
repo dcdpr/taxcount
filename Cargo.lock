@@ -1859,7 +1859,7 @@ dependencies = [
 
 [[package]]
 name = "taxcount"
-version = "0.2.0+2ac639d"
+version = "0.2.0+7fe2efc"
 dependencies = [
  "arbtest",
  "base64 0.22.1",

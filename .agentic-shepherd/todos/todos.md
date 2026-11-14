@@ -56,21 +56,6 @@
   - This issue depends on issue #4, which removes the interest expense deduction from the "Gain"
     row of the ledgers-sums table.
 
-### [rgrant 20261101 01:40 UTC] 08 / from_fee_split() fails to divide a fee coin gain into US and Non-US the same as a trade
-  - As a bona fide resident, when I pay a fee after the move date with a fee coin that I got before
-    the move date, I expect the gain of the fee coin in the US column up to the move-date value,
-    and the rest in the Non-US column, the same as an EventAtom::Trade.
-  - As a bona fide resident, when I pay a fee in USD, I expect the "Trade Basis" and "Trade
-    Proceeds" of that fee in the column of the fee date.
-  - At this time, from_fee_split() selects the column by only the basis_date of the fee coin
-    (instead of also the event_date), and does not divide gain from single atoms into both US and
-    bona_fide.
-  - For a USD PoolAsset with Origin::Base, BasisLifecycle::get_datetime() gives Utc::now(). As a
-    result, from_fee_split() puts each USD EventAtom::Fee in the Non-US column, for each event
-    date.
-  - The total gain is equal to the total that the code gives at this time. The division between the
-    US and Non-US columns changes.
-
 ### [rgrant 20261114 20:57 UTC] 11 / SE Defects in src/model/events.rs
   - The file src/model/events.rs contains SE Defects in doc comments that issue 10 did not change.
   - SE Rule 1.1: "Worksheet name are typically either wallet names or exchange names." in the doc
