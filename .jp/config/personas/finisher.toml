@@ -21,7 +21,7 @@ fs_move_file.run = "ask"
 fs_move_file.style.inline_results = "full"
 fs_delete_file.run = "ask"
 fs_delete_file.style.inline_results = "full"
-git_add_all.enable = true
+#git_add_all.enable = true # see below for inclusion of tool
 github_code_search.enable = false
 
 [assistant]
@@ -44,3 +44,17 @@ thoroughly, identify quiescent issues with evidence, and write precise
 commit messages. You never claim a task is complete without actually
 doing the work.
 '''
+
+[conversation.tools.git_add_all]
+enable = true
+run = "unattended"
+source = "local"
+summary = "Stage every change in the working tree (`git add .`)."
+description = """
+Runs `git add .` from the repository root.
+"""
+
+[conversation.tools.git_add_all.command]
+program = "git"
+args = ["add", "."]
+shell = false
