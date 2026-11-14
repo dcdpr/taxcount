@@ -157,3 +157,27 @@
       EventInfo::proceeds from the same quantity and the same rate as the atoms.
     - [rgrant 20261107 01:59 UTC] This change replaces the "Error Check" step of
       issue-004-sums-fees.md, the ledger_proceeds text in the Analysis, and description item 8.
+    - [rgrant 20261113 22:08 UTC] Margin fees: the fee of a margin close is a sale expense of the
+      closing trade. The sources are CFR 1.1001-7, Pub 550, and the Form 8949 instructions. The
+      margin rollover fee is in no "Fees" row.
+    - [rgrant 20261114 00:37 UTC] The margin open fee stays a disposal of the fee coin only, per
+      decision of 20261106 21:12 UTC. The margin open fee melds both a trade fee and a margin fee,
+      so if the trade fee could be reported there could be a legitimate reduction in the taxpayer's
+      gain. However, to separate the two requires implicit knowledge of the fee table in effect at
+      that time. The fee tables depends on both exchange policy and trader volume. Lacking this
+      information, the potential tax liability reduction of reporting margin open fees with
+      separate Atoms is explicitly left out of scope, and taxcount overreports gain from margin
+      positions as a result.
+    - [rgrant 20261113 22:08 UTC] [offtopic] Margin settle: the net gain is correct for USD. These
+      problems are without an issue:
+      - get_event_name() gives "Settle Long" to a short position and "Settle Short" to a long
+        position.
+      - For a long position, the holding period starts at the margin settle, and the purchase was
+        at the margin open.
+      - For a long position in EUR, CHF, or JPY, handle_trade() calculates the asset-out rate from
+        two times. The price is from the margin open, and the market rate is from the margin
+        settle.
+    - [rgrant 20261113 22:08 UTC] Section 4, Event Details CSV: issue 09 contains a problem. On
+      each "Position" line, the "Proceeds" column contains 0.0000. The sums CSV is correct.
+    - [rgrant 20261113 22:08 UTC] Issue 04 is done. Issue 09 contains the remaining part of
+      Section 4.

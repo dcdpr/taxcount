@@ -1,5 +1,27 @@
 # Issues Tracker (sorted by priority)
 
+### [rgrant 20261114 17:19 UTC] 10 / incorrect blank fee basis all fee atoms of some trades
+  - As a bona fide resident, when I have a simple sale using BTC UTXOs with basis before the bona
+    fide date, I expect the same bona fide logic for trade atoms and fee atoms.
+  - In the failure case, the entire gain from the fee atom is in column K ("Net Capital Gains (US
+    Long Term)") and none in column P ("Net Capital Gains (Non-US Long Term)")
+  - In the failure case, column L ("basis (Non-US)") is blank, despite these UTXOs having a basis
+    from before the bona fide date.
+
+### [rgrant 20261113 21:59 UTC] 09 / Proceeds are 0.0000 for each margin close in event details file
+  - As a user, when I read a "Position" line in the event details file, I expect a USD value in its
+    "Proceeds" column. That value is the profit or the loss of the margin close.
+  - Each line with "Position" in the "Event" column is a margin close, and its "Proceeds" column
+    contains "0.0000".
+  - For a margin close in USD, the user can read the USD value from the "Asset Amount" column. For
+    a margin close in EUR, CHF, or JPY, the USD value is missing from the event details file.
+  - In references/kraken-tests, line "fe7af8-f0c7b-45b4a5" contains 11.8707 EUR in the "Asset
+    Amount" column and 0.0000 in the "Proceeds" column. The ledgers CSV contains 12.7859 USD for
+    the same margin close.
+  - The "Fees" column of that line contains the fee share 1.4370. "Proceeds" minus "Fees" is
+    -1.4370 on that line, and the correct value is 11.3489.
+  - The sums CSV and the ledgers CSV contain the correct values for each margin close.
+
 ### [rgrant 20261031 20:20 UTC] 05 / Statement 24 basis and market value are kludged out of gain totals
   - As a bona fide resident filing Form 482 statement 24, when the report is built, I expect each
     row to sum three figures over the lots sold after the move date: the sale price net of selling
