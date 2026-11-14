@@ -181,3 +181,4 @@
       each "Position" line, the "Proceeds" column contains 0.0000. The sums CSV is correct.
     - [rgrant 20261113 22:08 UTC] Issue 04 is done. Issue 09 contains the remaining part of
       Section 4.
+    - [rgrant 20261114 19:18 UTC] preparing for finish-issue
