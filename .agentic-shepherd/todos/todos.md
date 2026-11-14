@@ -1,13 +1,5 @@
 # Issues Tracker (sorted by priority)
 
-### [rgrant 20261114 17:19 UTC] 10 / incorrect blank fee basis all fee atoms of some trades
-  - As a bona fide resident, when I have a simple sale using BTC UTXOs with basis before the bona
-    fide date, I expect the same bona fide logic for trade atoms and fee atoms.
-  - In the failure case, the entire gain from the fee atom is in column K ("Net Capital Gains (US
-    Long Term)") and none in column P ("Net Capital Gains (Non-US Long Term)")
-  - In the failure case, column L ("basis (Non-US)") is blank, despite these UTXOs having a basis
-    from before the bona fide date.
-
 ### [rgrant 20261113 21:59 UTC] 09 / Proceeds are 0.0000 for each margin close in event details file
   - As a user, when I read a "Position" line in the event details file, I expect a USD value in its
     "Proceeds" column. That value is the profit or the loss of the margin close.
@@ -38,7 +30,7 @@
   - The per-lot figures already exist in the trade-details output.
   - Depends on issue #4, which surfaces the move-date value in the sums table.
 
-### [rgrant 20261031 22:26 UTC] 06 / Sums tables should show only US columns without a residency date
+### [rgrant 20261031 22:26 UTC] 06 / Sums tables should show only US columns when no residency date
   - As a user, when I run taxcount without --bona-fide-residency, I expect the ledgers-sums and
     wallet-sums tables to show only the "US Long Term" and "US Short Term" columns.
   - Without --bona-fide-residency, taxcount writes the "Non-US Long Term" and "Non-US Short Term"
@@ -70,10 +62,25 @@
     and the rest in the Non-US column, the same as an EventAtom::Trade.
   - As a bona fide resident, when I pay a fee in USD, I expect the "Trade Basis" and "Trade
     Proceeds" of that fee in the column of the fee date.
-  - At this time, from_fee_split() selects the column by the basis_date of the fee coin, and does
-    not divide the gain into us and bona_fide.
+  - At this time, from_fee_split() selects the column by only the basis_date of the fee coin
+    (instead of also the event_date), and does not divide gain from single atoms into both US and
+    bona_fide.
   - For a USD PoolAsset with Origin::Base, BasisLifecycle::get_datetime() gives Utc::now(). As a
     result, from_fee_split() puts each USD EventAtom::Fee in the Non-US column, for each event
     date.
   - The total gain is equal to the total that the code gives at this time. The division between the
     US and Non-US columns changes.
+
+### [rgrant 20261114 20:57 UTC] 11 / SE Defects in src/model/events.rs
+  - The file src/model/events.rs contains SE Defects in doc comments that issue 10 did not change.
+  - SE Rule 1.1: "Worksheet name are typically either wallet names or exchange names." in the doc
+    comment of Event::worksheet_name. Correct text: "The worksheet name is the name of a wallet or
+    of an exchange."
+  - SE Rule 1.1: "There is no cost basis, because the asset is loaned." in the doc comment of
+    EventAtom::Position. Correct text: "A position atom contains proceeds only, because the user
+    borrows the asset."
+  - SE Rule 3.6: "the fee asset's market rate at the event date-time is used" in the doc comment of
+    Event::add_fee(). Correct text: "add_fee() uses the market rate of the fee asset at the event
+    date."
+  - SE Rule 4.2: "Short-term, US-sources gains only." in the doc comment of GainTerm::ShortUs.
+    Correct text: "A short-term gain term with a US portion only."

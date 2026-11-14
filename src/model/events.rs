@@ -7,6 +7,9 @@ use chrono::{DateTime, Months, Utc};
 use serde::{Deserialize, Serialize};
 use std::rc::Rc;
 
+#[cfg(test)]
+mod tests;
+
 /// When a `PoolAsset<BTC>` must be split to fulfill a `LedgerParsed`, then the `Event` will
 /// reference one or more splits for that `LedgerParsed` via `asset_idx_out`.
 ///
@@ -176,6 +179,90 @@ pub(crate) enum GainTerm {
     },
 }
 
+impl GainTerm {
+    /// The function calculates the gain term of one split that a user disposes of at `event_date`.
+    ///
+    /// The net gain is `proceeds` minus the basis of the split.  If the holding period is more
+    /// than one year, the function returns GainTerm::LongUs, GainTerm::LongBonaFide, or
+    /// GainTerm::Long.
+    ///
+    /// If `gain_config.bona_fide_residency` is None, or if the event date is before the move date,
+    /// the US portion contains the full net gain.  For a basis date before the move date and an
+    /// event date at or after the move date, the gain term contains two gain portions.  The
+    /// function divides the net gain between the US portion and the bona fide portion at the
+    /// move-date value of the split.  For each other split, the bona fide portion contains the
+    /// full net gain.
+    ///
+    /// The move-date value is the amount times the market rate at the move date.  If the exchange
+    /// rates database is without that rate, the function returns an [`ExchangeRateError`].
+    fn from_split<A>(
+        split: PoolAssetNonSplittable<A>,
+        proceeds: UsdAmount,
+        event_date: DateTime<Utc>,
+        gain_config: &GainConfig,
+    ) -> Result<Self, ExchangeRateError>
+    where
+        A: Asset,
+        KrakenAmount: From<A>,
+    {
+        let amount = KrakenAmount::from(split.amount);
+        let lifecycle = split.lifecycle;
+        let basis = amount.get_value_usd(
+            lifecycle.get_exchange_rate_at_acquisition(&gain_config.exchange_rates_db)?,
+        );
+        let basis_date = lifecycle.get_datetime();
+        let basis_synthetic_id = lifecycle.get_synthetic_id().to_string();
+
+        let total_net_gain = GainPortion {
+            basis,
+            basis_date,
+            basis_synthetic_id,
+            net_gain: proceeds - basis,
+        };
+
+        let (us, bona_fide) = match gain_config.bona_fide_residency {
+            Some(move_date) => {
+                if event_date < move_date {
+                    (Some(total_net_gain), None)
+                } else if basis_date < move_date {
+                    let bona_fide_basis = amount.get_value_usd(
+                        amount.get_exchange_rate(move_date, &gain_config.exchange_rates_db)?,
+                    );
+
+                    let us_portion = Some(GainPortion {
+                        net_gain: bona_fide_basis - basis,
+                        ..total_net_gain
+                    });
+                    let bona_fide_portion = Some(GainPortion {
+                        basis: bona_fide_basis,
+                        basis_date: move_date,
+                        basis_synthetic_id: "Special election for bona fide residents".to_string(),
+                        net_gain: proceeds - bona_fide_basis,
+                    });
+
+                    (us_portion, bona_fide_portion)
+                } else {
+                    (None, Some(total_net_gain))
+                }
+            }
+            None => (Some(total_net_gain), None),
+        };
+
+        // For an event date of February 29, `event_date - Months::new(12)` is February 28.
+        let is_long_term = basis_date < event_date - Months::new(12);
+
+        Ok(match (is_long_term, us, bona_fide) {
+            (false, Some(us), None) => Self::ShortUs(us),
+            (false, None, Some(bona_fide)) => Self::ShortBonaFide(bona_fide),
+            (false, Some(us), Some(bona_fide)) => Self::Short { us, bona_fide },
+            (true, Some(us), None) => Self::LongUs(us),
+            (true, None, Some(bona_fide)) => Self::LongBonaFide(bona_fide),
+            (true, Some(us), Some(bona_fide)) => Self::Long { us, bona_fide },
+            (_, None, None) => unreachable!(),
+        })
+    }
+}
+
 /// Gains are attributable to US holding periods and territory holding periods. This is the common
 /// data between them.
 #[derive(Clone, Debug)]
@@ -315,7 +402,7 @@ impl Event {
         gain_config: &GainConfig,
     ) -> Vec<ExchangeRateError>
     where
-        A: Asset,
+        A: Asset + Copy,
         KrakenAmount: From<A>,
     {
         let mut errors = vec![];
@@ -452,13 +539,8 @@ impl EventAtom {
     ///
     /// `proceeds` is the disposed amount times the event's `asset_out_exchange_rate`.
     ///
-    /// `net_gain` is `proceeds` minus the split's cost basis. The cost basis is the amount times
-    /// the acquisition rate. The gain is classified by the split's basis date: short-term or
-    /// long-term against the event date, US or territory against the bona fide residency date.
-    ///
-    /// When the basis date is before the move date and the event date is not, the gain is split
-    /// at the coin's move-date value. The US portion is the gain accrued to the move date. The
-    /// territory portion is the gain from the move date to the sale, re-based at the move date.
+    /// [`GainTerm::from_split`] calculates `net_gain` from `proceeds`, the split, and the event
+    /// date.
     ///
     /// Disposed amounts are recorded negative.
     fn trade_from_split<A>(
@@ -467,7 +549,7 @@ impl EventAtom {
         gain_config: &GainConfig,
     ) -> Result<Self, ExchangeRateError>
     where
-        A: Asset,
+        A: Asset + Copy,
         KrakenAmount: From<A>,
     {
         let asset_amount = KrakenAmount::from(split.amount);
@@ -476,68 +558,7 @@ impl EventAtom {
                 .asset_out_exchange_rate
                 .expect("Exchange rate is required"),
         );
-        let net_gain = {
-            let basis = asset_amount.get_value_usd(
-                split
-                    .lifecycle
-                    .get_exchange_rate_at_acquisition(&gain_config.exchange_rates_db)?,
-            );
-            let basis_date = split.lifecycle.get_datetime();
-            let basis_synthetic_id = split.lifecycle.get_synthetic_id().to_string();
-
-            let total_net_gain = GainPortion {
-                basis,
-                basis_date,
-                basis_synthetic_id,
-                net_gain: proceeds - basis,
-            };
-
-            let (us, bona_fide) = match gain_config.bona_fide_residency {
-                Some(move_date) => {
-                    if event_info.event_date < move_date {
-                        // Gain is allocated as US-sourced gains.
-                        (Some(total_net_gain), None)
-                    } else if basis_date < move_date {
-                        // Split the total gain between US-sourced and Territory-sourced gains.
-                        let bona_fide_basis = asset_amount.get_value_usd(
-                            asset_amount
-                                .get_exchange_rate(move_date, &gain_config.exchange_rates_db)?,
-                        );
-
-                        let us_portion = Some(GainPortion {
-                            net_gain: bona_fide_basis - basis,
-                            ..total_net_gain
-                        });
-                        let bona_fide_portion = Some(GainPortion {
-                            basis: bona_fide_basis,
-                            basis_date: move_date,
-                            basis_synthetic_id: "Special election for bona fide residents"
-                                .to_string(),
-                            net_gain: proceeds - bona_fide_basis,
-                        });
-
-                        (us_portion, bona_fide_portion)
-                    } else {
-                        (None, Some(total_net_gain))
-                    }
-                }
-                None => (Some(total_net_gain), None),
-            };
-
-            // The short-term/long-term threshold for capital gains is one year.
-            // This subtraction clamps February 29th (leap year) to February 28th.
-            let is_long_term = basis_date < event_info.event_date - Months::new(12);
-
-            match (is_long_term, us, bona_fide) {
-                (false, Some(us), None) => GainTerm::ShortUs(us),
-                (false, None, Some(bona_fide)) => GainTerm::ShortBonaFide(bona_fide),
-                (false, Some(us), Some(bona_fide)) => GainTerm::Short { us, bona_fide },
-                (true, Some(us), None) => GainTerm::LongUs(us),
-                (true, None, Some(bona_fide)) => GainTerm::LongBonaFide(bona_fide),
-                (true, Some(us), Some(bona_fide)) => GainTerm::Long { us, bona_fide },
-                _ => unreachable!(),
-            }
-        };
+        let net_gain = GainTerm::from_split(split, proceeds, event_info.event_date, gain_config)?;
 
         Ok(Self::Trade {
             asset_amount: -asset_amount, // Traded assets are always outgoing.
@@ -616,10 +637,9 @@ impl EventAtom {
     ///
     /// `proceeds` is the fee's USD value at the moment of payment (`fee_rate`).
     ///
-    /// `net_gain` is that value minus the fee coin's cost basis, classified by the fee coin's basis
-    /// date (short-term/long-term against the event date, US/territory against the bona fide
-    /// residency date). Margin position rollovers become investment fee atoms (investment interest
-    /// expenses). All other fees become fee atoms.
+    /// [`GainTerm::from_split`] calculates `net_gain` from `proceeds`, the split, and the event
+    /// date.  For a margin rollover, the function returns an investment fee atom.  For each other
+    /// event, the function returns a fee atom.
     ///
     /// `ledger_row_id` is the fee's ledger row, when it is not the event's own row (see
     /// [`Event::add_fee`]).
@@ -631,50 +651,12 @@ impl EventAtom {
         ledger_row_id: &Option<String>,
     ) -> Result<Self, ExchangeRateError>
     where
-        A: Asset,
+        A: Asset + Copy,
         KrakenAmount: From<A>,
     {
         let asset_fee = KrakenAmount::from(split.amount);
         let proceeds = asset_fee.get_value_usd(fee_rate);
-        let net_gain = {
-            let basis = asset_fee.get_value_usd(
-                split
-                    .lifecycle
-                    .get_exchange_rate_at_acquisition(&gain_config.exchange_rates_db)?,
-            );
-            let basis_date = split.lifecycle.get_datetime();
-            let basis_synthetic_id = split.lifecycle.get_synthetic_id().to_string();
-
-            let net_gain_portion = GainPortion {
-                basis,
-                basis_date,
-                basis_synthetic_id,
-                net_gain: proceeds - basis,
-            };
-
-            let (us, bona_fide) = match gain_config.bona_fide_residency {
-                Some(move_date) => {
-                    if basis_date < move_date {
-                        (Some(net_gain_portion), None)
-                    } else {
-                        (None, Some(net_gain_portion))
-                    }
-                }
-                None => (Some(net_gain_portion), None),
-            };
-
-            // The short-term/long-term threshold for capital gains is one year
-            // This subtraction clamps February 29th (leap year) to February 28th
-            let is_long_term = basis_date < event_info.event_date - Months::new(12);
-
-            match (is_long_term, us, bona_fide) {
-                (false, Some(us), None) => GainTerm::ShortUs(us),
-                (false, None, Some(bona_fide)) => GainTerm::ShortBonaFide(bona_fide),
-                (true, Some(us), None) => GainTerm::LongUs(us),
-                (true, None, Some(bona_fide)) => GainTerm::LongBonaFide(bona_fide),
-                _ => unreachable!(),
-            }
-        };
+        let net_gain = GainTerm::from_split(split, proceeds, event_info.event_date, gain_config)?;
 
         if matches!(event_info.event_subtype, EventSubType::MarginRollover) {
             Ok(Self::InvestmentFee {

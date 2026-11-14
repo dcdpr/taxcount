@@ -114,6 +114,43 @@ fn test_regression_bona_fide_proceeds() {
     assert_eq!(us.gain(), usd(200));
 }
 
+/// A fee atom with two gain portions.  The US gain cell contains the basis, the move-date value,
+/// and the net gain before the move date.  The Non-US gain cell contains the proceeds, and the
+/// move-date value as its basis.  See #10.
+#[test]
+fn fee_divided_by_move_date() {
+    let worksheet = worksheet(
+        EventSubType::Withdrawal,
+        vec![EventAtom::Fee {
+            asset_amount: btc("-0.01000000"),
+            proceeds: usd(10),
+            net_gain: GainTerm::Long {
+                us: portion(1, 2, date(2023, 1, 16)),
+                bona_fide: portion(3, 7, date(2024, 2, 24)),
+            },
+            ledger_row_id: None,
+        }],
+    );
+
+    let sums = worksheet.sums();
+    sums.assert_error_check();
+
+    let us_long = &sums.gain_matrix.us_long;
+    assert_eq!(us_long.trade_proceeds, usd(0));
+    assert_eq!(us_long.move_date_value, usd(3));
+    assert_eq!(us_long.trade_basis, usd(1));
+    assert_eq!(us_long.gain(), usd(2));
+
+    let bona_fide = sums
+        .gain_matrix
+        .bona_fide_long
+        .expect("bona fide long-term cell");
+    assert_eq!(bona_fide.trade_proceeds, usd(10));
+    assert_eq!(bona_fide.move_date_value, usd(0));
+    assert_eq!(bona_fide.trade_basis, usd(3));
+    assert_eq!(bona_fide.gain(), usd(7));
+}
+
 /// A trade with a long-term lot and a fee paid from a short-term lot. The fee value is an
 /// expense of the long-term sale. The fee coin disposal is a short-term gain.
 #[test]
