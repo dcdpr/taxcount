@@ -3,71 +3,73 @@
 ## What is Taxcount?
 
 Taxcount counts up your gains and losses for US tax purposes.  It runs
-on an airgapped-network and helps Bitcoiners (both hodlers with wallet
-activity and bitcoin traders) fill out US IRS tax worksheet Form 8949,
-'Sales and other Dispositions of Capital Assets', for 1040 Schedule D,
-'Capital Gains and Losses"'.  Taxcount is production-ready, and we are
-currently focusing on the user experience.
+on an airgapped-network (ie. using your own bitcoind) and helps
+Bitcoiners (both traders and hodlers with wallet activity) fill out US
+IRS tax worksheet Form 8949, 'Sales and other Dispositions of Capital
+Assets', for 1040 Schedule D, 'Capital Gains and Losses"'.
 
-In general, when using Taxcount, your accounting job is to collect and
-offer the exports from your wallets and exchanges, and then label any
-on-chain transactions that were spends or regular income (including
-mining).  If, in the tax year of interest, you spent a
+Taxcount runs a complete simulation of all tax-year transactions
+across your entire Bitcoin ecosystem.  It processes exchange trades
+and on-chain wallet transactions, and it follows the original basis of
+your bitcoin through any number of wallet transfers and exchange
+round-trips.
+
+One of Taxcount's main features is the pure native design around
+UTXO-level binning for on-chain transactions.  Taxcount avoids any
+basis averaging, instead tracking every detail for complete accuracy
+(which satisfies [IRS
+Rev. Proc. 2024-28](https://www.irs.gov/irb/2024-31_irb#REV-PROC-2024-28)).
+However, as required by the IRS, Taxcount uses FIFO binning on
+exchanges.
+
+To use Taxcount, collect the exports from your wallets and exchanges,
+and then label on-chain transactions that either:
+  - left your control as spends; or
+  - came into your control as income from labor (including mining).
+
+If, in the tax year of interest, you spent a
 [UTXO](https://river.com/learn/terms/u/unspent-transaction-output-utxo/)
 that was not earned or purchased in that year, then Taxcount also has
 facilities for declaring its original
 [basis](https://www.irs.gov/taxtopics/tc703).
 
-### Comprehensive Transaction Tracking
+Taxcount is production-ready, and we are currently focusing on the
+user experience.  You may have to report your gains to the IRS, but
+you do not have to hand your transactions to anyone else.
 
-- **Multi-source integration** - process exchange trades and on-chain
-  wallet transactions
-- **Basis tracking** - follow the purchase price of your bitcoin through
-  any number of wallet transfers and exchange round-trips
-- **Complete simulation** - runs a parallel model of all tax-year
-  transactions across your entire Bitcoin ecosystem
-
-### Key Features
-
-* **No cloud dependency** - connect to local bitcoind or Esplora
-* **Multiple transaction types** - supporting:
+### Transaction Types Supported
   * Spending
-  * Trading gains/losses
-  * Margin Trading gains/losses
-  * Mining income
-  * Labor income
-  * Lending activities
-  * more on the way
-* **CSV output** - for Form 8949 fields
-* **Non-US residency** - Puerto Rico residency is supported
+  * Trading
+  * Margin Trading
+  * Mining
+  * Income from labor
+  * Lending
 
-### Technical Advantages
+### Other Considerate Choices We Made for Our Users
 
-- **Local blockchain caching** - retrieve blocks and transactions over
-  the network exactly once
-- **100% Rust implementation** - no unsafe code and no "[stringly
-  typed](https://wiki.c2.com/?StringlyTyped)" data
-- **Decimal arithmatic** - we are extremely persnickety about where
-  divides occur in the codebase
-- **Precise fee handling** - special attention paid to how fees affect
-  gains
-- **FIFO binning on the exchanges** - as required by IRS
-- **UTXO-level binning for on-chain transactions** - maximum accuracy
-- **Handles margin trades** - all trade types on the exchange are
-  supported
-- **Zero need for basis averaging** - tracks every detail for complete
-  accuracy (and satisfies [IRS
-  Rev. Proc. 2024-28](https://www.irs.gov/irb/2024-31_irb#REV-PROC-2024-28))
-- **Flexible wallet support** - generic wallet format included, as well
-  as Electrum and Ledger Live wallet formats, with more on the way
-- **International Currencies** - the architecture is ready for trades in
-  any fiat quote currency and any asset, with several already included
-- **Extensive testing** - testing strategy includes generative simulated
-  data, but see [limitations](#a-temporary-tragedy)
+- The blockchain blocks and transaactions that you need are cached
+  locally, so that you retrieve them over your network once (because
+  bitcoind can be slow at this).
+- The architecture is ready for trades in any fiat quote currency and
+  any asset, with several international currencies already included.
+- An offline database of daily USD exchange rates is included (as well
+  as the program to refresh it), for calculating the USD value of
+  transactions that did not otherwise include USD.
+- This is a 100% Rust implementation and there is no unsafe code and
+  no "[stringly typed](https://wiki.c2.com/?StringlyTyped)" data.
+- We are extremely persnickety about where divides occur in the
+  codebase, and use decimal arithmatic.
+- We have included a generic wallet format, as well as Electrum and
+  Ledger Live wallet formats.
+- We also support Esplora as a blockchain backend, if you've set it
+  up, which is slightly faster than bitcoind.
+- Our testing strategy includes generative simulated data, but see
+  [limitations](#a-temporary-tragedy).
+- Puerto Rico (and other US Territory) residency is supported.
 
 ### Exchange Support
 
-Currently reads exports from Kraken.com.
+Taxcount currently reads exports from Kraken.com.
 
 ### Lightning Network
 
@@ -76,17 +78,6 @@ TBD
 ### Overview slides
 
 See [Taxcount from 40,000 feet](doc/Taxcount-from-40kft.pdf) (PDF).
-
-## Special Thanks
-
-Special thanks to [Jay](https://github.com/parasyte) at [BlipJoy](https://blipjoy.com/), who
-brought a new Rustacean along on a much longer ride than anticipated.
-Your patience and expertise proved invaluable during countless
-pair-programming sessions over the years.  Your willingness to both
-teach and adapt made this journey not only productive but genuinely
-enjoyable.  While rgrant initially outlined the architectural vision, kept
-the Bitcoin mechanics grounded, and donated live test data, Jay's deep
-knowledge of Rust truly brought the vision to life.
 
 ## Getting Started
 
@@ -227,7 +218,7 @@ The fields are:
 
     "txid","refid","time","type","subtype","aclass","asset","amount","fee","balance"
 
-Since we standardized on those ledger fields more have been added, but
+More have been added after we standardized on those ledger fields, but
 they don't affect parsing.
 
 ### Kraken Trades CSV
@@ -721,3 +712,14 @@ final summary.
 ### 2024-03-05 Bootstrap feature merged into main.
 
 ### 2025-03-18 Release to Github.
+
+## Special Thanks
+
+Special thanks to [Jay](https://github.com/parasyte) at [BlipJoy](https://blipjoy.com/), who
+brought a new Rustacean along on a much longer ride than anticipated.
+Your patience and expertise proved invaluable during countless
+pair-programming sessions over the years.  Your willingness to both
+teach and adapt made this journey not only productive but genuinely
+enjoyable.  While rgrant initially outlined the architectural vision, kept
+the Bitcoin mechanics grounded, and donated live test data, Jay's deep
+knowledge of Rust truly brought the vision to life.
