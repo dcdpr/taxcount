@@ -29,7 +29,8 @@ and then label on-chain transactions that either:
 
 If, in the tax year of interest, you spent a
 [UTXO](https://river.com/learn/terms/u/unspent-transaction-output-utxo/)
-that was not earned or purchased in that year, then Taxcount also has
+that was not earned or purchased in that year, and not otherwise known
+to Taxcount from a prior year's activity, then Taxcount also has
 facilities for declaring its original
 [basis](https://www.irs.gov/taxtopics/tc703).
 
