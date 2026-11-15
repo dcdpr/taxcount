@@ -1,5 +1,18 @@
 # Issues Tracker (sorted by priority)
 
+### [rgrant 20261114 23:58 UTC] 36 / Local issue numbers in commits link to unrelated GitHub issues
+  - As a reader of the project on GitHub, when I see an issue number such as #4 in a commit
+    message, I expect it to lead to the issue that the commit addresses, or to lead nowhere.
+  - The project tracks issues locally with agentic-shepherd, which assigns its own issue numbers.
+    GitHub assigns a separate sequence of numbers to its own issues.
+  - GitHub turns every #N in a commit message into a link to GitHub issue N. When a commit cites a
+    local issue number, GitHub shows a link to an unrelated GitHub issue, or to an issue that does
+    not exist.
+  - Example: commit f6ff27d cites local issues #4, #8, and #10.
+  - Each new commit that cites a local issue number adds another wrong link. Changing an old commit
+    message means rewriting history.
+  - Reported as GitHub issue dcdpr/taxcount#36.
+
 ### [rgrant 20261113 21:59 UTC] 09 / Proceeds are 0.0000 for each margin close in event details file
   - As a user, when I read a "Position" line in the event details file, I expect a USD value in its
     "Proceeds" column. That value is the profit or the loss of the margin close.
