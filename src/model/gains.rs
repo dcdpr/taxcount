@@ -395,32 +395,6 @@ impl CapGainsWorksheet {
         }
     }
 
-    pub fn pr_statement24_dates(&self) -> PrStatement24Dates {
-        let mut dates = PrStatement24Dates::default();
-
-        for row in &self.worksheet {
-            for atom in &row.event_details {
-                match atom {
-                    EventAtom::Trade { net_gain, .. }
-                    | EventAtom::Fee { net_gain, .. }
-                    | EventAtom::InvestmentFee { net_gain, .. } => {
-                        dates.update(net_gain, row.event_date);
-                    }
-                    EventAtom::Position {
-                        proceeds_bona_fide, ..
-                    } => {
-                        if proceeds_bona_fide.is_some() {
-                            dates.update_short(row.event_date, row.event_date);
-                        }
-                    }
-                    EventAtom::Income { .. } => {}
-                }
-            }
-        }
-
-        dates
-    }
-
     // Section 3, Sums Table :: Step 2, Rows
     pub fn sums(&self) -> Sums {
         let gain_matrix = self
@@ -745,48 +719,25 @@ impl Display for WorksheetName {
     }
 }
 
-/// Collected trade dates per (worksheet, LT/ST) for PR Statement-24.
+/// The sums of one row of PR Statement 24, for one gain term.  See #5.
 #[derive(Debug, Default)]
-pub struct PrStatement24Dates {
-    pub lt_earliest_acquired: Option<DateTime<Utc>>,
-    pub lt_latest_sold: Option<DateTime<Utc>>,
-    pub st_earliest_acquired: Option<DateTime<Utc>>,
-    pub st_latest_sold: Option<DateTime<Utc>>,
-}
+struct PrStatement24Sums {
+    /// Column A: the proceeds minus the fee share of each event atom.
+    sale_price: UsdAmount,
 
-impl PrStatement24Dates {
-    fn update(&mut self, gain_term: &GainTerm, event_date: DateTime<Utc>) {
-        let (is_long, basis_date) = match gain_term {
-            GainTerm::LongUs(p) | GainTerm::LongBonaFide(p) => (true, p.basis_date),
-            GainTerm::Long { us, .. } => (true, us.basis_date),
-            GainTerm::ShortUs(p) | GainTerm::ShortBonaFide(p) => (false, p.basis_date),
-            GainTerm::Short { us, .. } => (false, us.basis_date),
-        };
+    /// Column B: the basis of each bona fide portion.
+    market_value: UsdAmount,
 
-        if is_long {
-            self.lt_earliest_acquired = Some(match self.lt_earliest_acquired {
-                Some(existing) => existing.min(basis_date),
-                None => basis_date,
-            });
-            self.lt_latest_sold = Some(match self.lt_latest_sold {
-                Some(existing) => existing.max(event_date),
-                None => event_date,
-            });
-        } else {
-            self.update_short(basis_date, event_date);
-        }
-    }
+    /// Column C: the basis of each US portion, and the basis of each split with a bona fide
+    /// portion only.
+    adjusted_basis: UsdAmount,
 
-    fn update_short(&mut self, basis_date: DateTime<Utc>, event_date: DateTime<Utc>) {
-        self.st_earliest_acquired = Some(match self.st_earliest_acquired {
-            Some(existing) => existing.min(basis_date),
-            None => basis_date,
-        });
-        self.st_latest_sold = Some(match self.st_latest_sold {
-            Some(existing) => existing.max(event_date),
-            None => event_date,
-        });
-    }
+    /// The first basis date.  For a split with a US portion, it is the basis date of the US
+    /// portion.
+    date_acquired: Option<DateTime<Utc>>,
+
+    /// The last event date.
+    date_sold: Option<DateTime<Utc>>,
 }
 
 /// One row of PR Statement-24 (F1 Part III statement 24 :: capital gains).
@@ -818,65 +769,116 @@ impl PrStatement24 {
         self.rows.extend(other.rows);
     }
 
-    /// Build Statement-24 rows from a single worksheet's Sums and collected dates.
-    pub fn from_worksheet(
-        worksheet_name: &WorksheetName,
-        sums: &Sums,
-        dates: &PrStatement24Dates,
-    ) -> Self {
-        let mut rows = Vec::new();
+    /// Make the rows of PR Statement 24 from the event atoms of one CapGainsWorksheet.
+    ///
+    /// Each row is for one gain term.  A row contains each split with a bona fide portion, and
+    /// each position atom with proceeds_bona_fide.  A split with a US portion only is not PR
+    /// property, and it is not in a row.  If a gain term is without such event atoms, its row is
+    /// missing.  See #5.
+    pub fn from_worksheet(worksheet_name: &WorksheetName, worksheet: &CapGainsWorksheet) -> Self {
+        let mut long = PrStatement24Sums::default();
+        let mut short = PrStatement24Sums::default();
 
-        if let (Some(bona_fide_long), Some(date_acquired), Some(date_sold)) = (
-            &sums.gain_matrix.bona_fide_long,
-            dates.lt_earliest_acquired,
-            dates.lt_latest_sold,
-        ) {
-            let pr_gain = bona_fide_long.gain();
-            let us_gain = sums.gain_matrix.us_long.gain();
-            let sale_price = bona_fide_long.trade_proceeds;
-            let gain_or_loss = us_gain + pr_gain;
-            let market_value = sale_price - pr_gain;
-            let adjusted_basis = sale_price - gain_or_loss;
-
-            rows.push(PrStatement24Row {
-                description: format!("investment assets {worksheet_name} LT"),
-                date_acquired,
-                date_sold,
-                sale_price,
-                market_value,
-                adjusted_basis,
-                gain_or_loss,
-                us_gain,
-                pr_gain,
-            });
+        for row in &worksheet.worksheet {
+            let fee_shares = fee_shares(&row.event_details);
+            for (atom, fee_share) in row.event_details.iter().zip(fee_shares) {
+                let fee_share = fee_share.unwrap_or_default();
+                match atom {
+                    EventAtom::Trade {
+                        proceeds, net_gain, ..
+                    }
+                    | EventAtom::Fee {
+                        proceeds, net_gain, ..
+                    }
+                    | EventAtom::InvestmentFee {
+                        proceeds, net_gain, ..
+                    } => {
+                        let (sums, bona_fide, us) = match net_gain {
+                            GainTerm::ShortUs(_) | GainTerm::LongUs(_) => continue,
+                            GainTerm::ShortBonaFide(portion) => (&mut short, portion, portion),
+                            GainTerm::LongBonaFide(portion) => (&mut long, portion, portion),
+                            GainTerm::Short { us, bona_fide } => (&mut short, bona_fide, us),
+                            GainTerm::Long { us, bona_fide } => (&mut long, bona_fide, us),
+                        };
+                        sums.add(
+                            *proceeds - fee_share,
+                            bona_fide.basis,
+                            us.basis,
+                            us.basis_date,
+                            row.event_date,
+                        );
+                    }
+                    EventAtom::Position {
+                        proceeds_bona_fide: Some(proceeds),
+                        ..
+                    } => {
+                        // A position atom contains proceeds only, because the user borrows the
+                        // asset.
+                        short.add(
+                            *proceeds - fee_share,
+                            UsdAmount::default(),
+                            UsdAmount::default(),
+                            row.event_date,
+                            row.event_date,
+                        );
+                    }
+                    EventAtom::Position {
+                        proceeds_bona_fide: None,
+                        ..
+                    }
+                    | EventAtom::Income { .. } => {}
+                }
+            }
         }
 
-        if let (Some(bona_fide_short), Some(date_acquired), Some(date_sold)) = (
-            &sums.gain_matrix.bona_fide_short,
-            dates.st_earliest_acquired,
-            dates.st_latest_sold,
-        ) {
-            let pr_gain = bona_fide_short.gain();
-            let us_gain = sums.gain_matrix.us_short.gain();
-            let sale_price = bona_fide_short.trade_proceeds;
-            let gain_or_loss = us_gain + pr_gain;
-            let market_value = sale_price - pr_gain;
-            let adjusted_basis = sale_price - gain_or_loss;
-
-            rows.push(PrStatement24Row {
-                description: format!("investment assets {worksheet_name} ST"),
-                date_acquired,
-                date_sold,
-                sale_price,
-                market_value,
-                adjusted_basis,
-                gain_or_loss,
-                us_gain,
-                pr_gain,
-            });
-        }
+        let rows = [(long, "LT"), (short, "ST")]
+            .into_iter()
+            .filter_map(|(sums, term)| {
+                sums.into_row(format!("investment assets {worksheet_name} {term}"))
+            })
+            .collect();
 
         Self { rows }
+    }
+}
+
+impl PrStatement24Sums {
+    /// Add one event atom to the sums.
+    fn add(
+        &mut self,
+        sale_price: UsdAmount,
+        market_value: UsdAmount,
+        adjusted_basis: UsdAmount,
+        basis_date: DateTime<Utc>,
+        event_date: DateTime<Utc>,
+    ) {
+        self.sale_price += sale_price;
+        self.market_value += market_value;
+        self.adjusted_basis += adjusted_basis;
+        self.date_acquired = Some(
+            self.date_acquired
+                .map_or(basis_date, |date| date.min(basis_date)),
+        );
+        self.date_sold = Some(
+            self.date_sold
+                .map_or(event_date, |date| date.max(event_date)),
+        );
+    }
+
+    /// The row of PR Statement 24, with D = A - C, E = B - C, and F = A - B.  If the sums are
+    /// without an event atom, the row is `None`.
+    fn into_row(self, description: String) -> Option<PrStatement24Row> {
+        Some(PrStatement24Row {
+            description,
+            date_acquired: self.date_acquired?,
+            date_sold: self.date_sold?,
+            sale_price: self.sale_price,
+            market_value: self.market_value,
+            adjusted_basis: self.adjusted_basis,
+            gain_or_loss: self.sale_price - self.adjusted_basis,
+            us_gain: self.market_value - self.adjusted_basis,
+            pr_gain: self.sale_price - self.market_value,
+        })
     }
 }
 

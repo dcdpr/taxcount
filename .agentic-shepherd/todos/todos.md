@@ -13,22 +13,6 @@
     message means rewriting history.
   - Reported as GitHub issue dcdpr/taxcount#36.
 
-### [rgrant 20261031 20:20 UTC] 05 / Statement 24 basis and market value are kludged out of gain totals
-  - As a bona fide resident filing Form 482 statement 24, when the report is built, I expect each
-    row to sum three figures over the lots sold after the move date: the sale price net of selling
-    fees, the value on the move date (or the acquisition cost, for lots acquired after the move),
-    and the acquisition cost including purchase fees. Total gain, US-sourced gain, and PR-sourced
-    gain follow from those three sums.
-  - Lots sold before the move date are not dispositions of PR property and do not belong in any
-    statement 24 figure.
-  - Investment interest expense is a Form 4952 deduction and is not part of any statement 24
-    figure.
-  - Today the basis and market-value columns are reconstructed from gain totals, and the US and PR
-    gain columns carry limited interest expense, which is only right when every sold lot straddles
-    the move date and there is no interest expense.
-  - The per-lot figures already exist in the trade-details output.
-  - Depends on issue #4, which surfaces the move-date value in the sums table.
-
 ### [rgrant 20261031 22:26 UTC] 06 / Sums tables should show only US columns when no residency date
   - As a user, when I run taxcount without --bona-fide-residency, I expect the ledgers-sums and
     wallet-sums tables to show only the "US Long Term" and "US Short Term" columns.
@@ -97,3 +81,11 @@
   - SE Rule 4.2: "A trade with two lots. The fee value divides across the lots pro-rata by amount."
     in the doc comment of trade_fee_cost_pro_rata_across_lots(). Correct text: "fee_shares()
     divides the fee value across the two trade atoms of a trade by amount."
+
+### [rgrant 20261115 19:38 UTC] 39 / The event details file contains different rows at each run
+  - As a maintainer, when I run the Kraken tests two times with the same inputs, I expect the same
+    rows in fixtures/runs/kraken-tests/YYYYMMDD-ledgers-event-details.csv.
+  - Taxcount uses now() to calculate some values in the event details file.
+  - As a result, git shows changed rows in that fixture after each run, also when the code and the
+    inputs are the same.
+  - Then a maintainer cannot find the rows that are different because of a change to the code.

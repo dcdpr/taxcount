@@ -568,9 +568,8 @@ fn run(args: Result<Args, CliError>) -> Result<(), Error> {
         sums.assert_error_check();
 
         if bona_fide_residency.is_some() {
-            let dates = worksheet.pr_statement24_dates();
             let name = WorksheetName::from(worksheet_name.to_string());
-            let statement = PrStatement24::from_worksheet(&name, &sums, &dates);
+            let statement = PrStatement24::from_worksheet(&name, &worksheet);
             pr_statement24_rows.push(statement);
         }
     }

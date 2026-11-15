@@ -28,54 +28,70 @@ fn portion(basis: i64, net_gain: i64, basis_date: DateTime<Utc>) -> GainPortion 
     }
 }
 
-/// A worksheet with one event.
-fn worksheet(event_subtype: EventSubType, event_details: Vec<EventAtom>) -> CapGainsWorksheet {
-    CapGainsWorksheet {
-        worksheet: vec![CapGainsWorksheetRow {
-            event_date: date(2024, 6, 1),
-            internal_account: String::new(),
-            ledger_row_id: String::new(),
-            event_subtype,
-            event_name: String::new(),
-            asset_out_exchange_rate: String::new(),
-            asset_in_exchange_rate: String::new(),
-            event_details,
-        }],
+/// A CapGainsWorksheetRow for one event.
+fn row(
+    event_date: DateTime<Utc>,
+    event_subtype: EventSubType,
+    event_details: Vec<EventAtom>,
+) -> CapGainsWorksheetRow {
+    CapGainsWorksheetRow {
+        event_date,
+        internal_account: String::new(),
+        ledger_row_id: String::new(),
+        event_subtype,
+        event_name: String::new(),
+        asset_out_exchange_rate: String::new(),
+        asset_in_exchange_rate: String::new(),
+        event_details,
     }
 }
 
-/// Regression test for issue #3: pr_statement24_dates() must collect dates from
-/// fee atoms in `event_details`, not only trade atoms. A worksheet with fee-only
-/// bona fide activity must still produce dates for the PR Statement-24 row.
+/// A worksheet with one event.
+fn worksheet(event_subtype: EventSubType, event_details: Vec<EventAtom>) -> CapGainsWorksheet {
+    CapGainsWorksheet {
+        worksheet: vec![row(date(2024, 6, 1), event_subtype, event_details)],
+    }
+}
+
+/// The header line of PR Statement 24.
+const PR_STATEMENT24_HEADER: &str = concat!(
+    r#""Property Description","Date Acquired","Date Sold","A: Sale Price","#,
+    r#""B: Market Value","C: Adjusted Basis","D: Gain or Loss","E: US-Sourced Gain","#,
+    r#""F: PR-Sourced Gain""#,
+    "\n",
+);
+
+/// The CapGainsWorksheet contains one fee atom with a bona fide portion only.  PR Statement 24
+/// contains a row with the dates of that fee atom.  See #3 and #5.
 #[test]
 fn pr_statement24_dates_from_fees_only() {
     let basis_date = date(2024, 6, 1);
     let event_date = date(2024, 12, 1);
 
     let worksheet = CapGainsWorksheet {
-        worksheet: vec![CapGainsWorksheetRow {
+        worksheet: vec![row(
             event_date,
-            internal_account: String::new(),
-            ledger_row_id: String::new(),
-            event_subtype: EventSubType::Trade,
-            event_name: String::new(),
-            asset_out_exchange_rate: String::new(),
-            asset_in_exchange_rate: String::new(),
-            event_details: vec![EventAtom::Fee {
+            EventSubType::Trade,
+            vec![EventAtom::Fee {
                 asset_amount: KrakenAmount::Btc(BitcoinAmount::default()),
                 proceeds: usd(0),
                 net_gain: GainTerm::ShortBonaFide(portion(5000, -5000, basis_date)),
                 ledger_row_id: None,
             }],
-        }],
+        )],
     };
 
-    let dates = worksheet.pr_statement24_dates();
+    let worksheet_name = WorksheetName::from("test-exchange".to_string());
+    let statement = PrStatement24::from_worksheet(&worksheet_name, &worksheet);
 
-    assert_eq!(dates.st_earliest_acquired, Some(basis_date));
-    assert_eq!(dates.st_latest_sold, Some(event_date));
-    assert_eq!(dates.lt_earliest_acquired, None);
-    assert_eq!(dates.lt_latest_sold, None);
+    let expected = format!(
+        "{PR_STATEMENT24_HEADER}{}\n",
+        concat!(
+            r#""investment assets test-exchange ST","2024-06-01","2024-12-01","0.0000","#,
+            r#""5000.0000","5000.0000","-5000.0000","0.0000","-5000.0000""#,
+        ),
+    );
+    assert_eq!(statement.to_string(), expected);
 }
 
 /// A split that the move date divides: the US cell gets the basis, the move-date value, and the
@@ -452,48 +468,136 @@ fn sums_csv_rows() {
     assert_eq!(worksheet.sums().to_string(), expected);
 }
 
+/// PR Statement 24 contains each split with a bona fide portion, and each position atom with
+/// proceeds_bona_fide.  Column A contains the proceeds minus the fee shares.  Column B contains
+/// the basis of each bona fide portion.  Column C contains the basis of each US portion, and the
+/// basis of each split with a bona fide portion only.  The trade of the split with a US portion
+/// only is not in a row.  See #5.
 #[test]
-fn pr_statement24_from_sums() {
-    let sums = Sums {
-        gain_matrix: GainMatrix {
-            us_short: GainCell {
-                trade_proceeds: usd(50),
-                ..Default::default()
-            },
-            us_long: GainCell {
-                trade_proceeds: usd(200),
-                ..Default::default()
-            },
-            bona_fide_short: Some(GainCell {
-                trade_proceeds: usd(500),
-                trade_basis: usd(400),
-                ..Default::default()
-            }),
-            bona_fide_long: Some(GainCell {
-                trade_proceeds: usd(1000),
-                trade_basis: usd(700),
-                ..Default::default()
-            }),
-        },
-    };
-
-    let dates = PrStatement24Dates {
-        lt_earliest_acquired: Some(date(2020, 1, 15)),
-        lt_latest_sold: Some(date(2024, 12, 15)),
-        st_earliest_acquired: Some(date(2024, 3, 1)),
-        st_latest_sold: Some(date(2024, 11, 20)),
+fn pr_statement24_from_atoms() {
+    let move_date = date(2024, 2, 24);
+    let worksheet = CapGainsWorksheet {
+        worksheet: vec![
+            row(
+                date(2024, 1, 10),
+                EventSubType::Trade,
+                vec![EventAtom::Trade {
+                    asset_amount: btc("-0.10000000"),
+                    proceeds: usd(100),
+                    net_gain: GainTerm::ShortUs(portion(40, 60, date(2023, 12, 1))),
+                }],
+            ),
+            row(
+                date(2024, 6, 1),
+                EventSubType::Trade,
+                vec![
+                    EventAtom::Trade {
+                        asset_amount: btc("-1.00000000"),
+                        proceeds: usd(1000),
+                        net_gain: GainTerm::Short {
+                            us: portion(100, 200, date(2024, 1, 5)),
+                            bona_fide: portion(300, 700, move_date),
+                        },
+                    },
+                    EventAtom::Fee {
+                        asset_amount: btc("-0.00800000"),
+                        proceeds: usd(8),
+                        net_gain: GainTerm::Short {
+                            us: portion(1, 2, date(2024, 1, 5)),
+                            bona_fide: portion(3, 5, move_date),
+                        },
+                        ledger_row_id: None,
+                    },
+                ],
+            ),
+            row(
+                date(2024, 7, 1),
+                EventSubType::Trade,
+                vec![EventAtom::Trade {
+                    asset_amount: btc("-0.50000000"),
+                    proceeds: usd(500),
+                    net_gain: GainTerm::ShortBonaFide(portion(400, 100, date(2024, 3, 1))),
+                }],
+            ),
+            row(
+                date(2024, 8, 1),
+                EventSubType::MarginClose,
+                vec![
+                    EventAtom::Position {
+                        asset_amount: KrakenAmount::new("ZUSD", "50.0000").unwrap(),
+                        proceeds_us: usd(0),
+                        proceeds_bona_fide: Some(usd(50)),
+                    },
+                    EventAtom::Fee {
+                        asset_amount: btc("-0.00500000"),
+                        proceeds: usd(5),
+                        net_gain: GainTerm::ShortBonaFide(portion(4, 1, date(2024, 3, 1))),
+                        ledger_row_id: None,
+                    },
+                ],
+            ),
+            row(
+                date(2024, 9, 1),
+                EventSubType::MarginRollover,
+                vec![EventAtom::InvestmentFee {
+                    asset_amount: btc("-0.00020000"),
+                    proceeds: usd(20),
+                    net_gain: GainTerm::Long {
+                        us: portion(2, 8, date(2022, 5, 15)),
+                        bona_fide: portion(10, 10, move_date),
+                    },
+                    ledger_row_id: None,
+                }],
+            ),
+        ],
     };
 
     let worksheet_name = WorksheetName::from("test-exchange".to_string());
-    let statement = PrStatement24::from_worksheet(&worksheet_name, &sums, &dates);
+    let statement = PrStatement24::from_worksheet(&worksheet_name, &worksheet);
 
-    let expected = concat!(
-        r#""Property Description","Date Acquired","Date Sold","A: Sale Price","B: Market Value","C: Adjusted Basis","D: Gain or Loss","E: US-Sourced Gain","F: PR-Sourced Gain""#,
-        "\n",
-        r#""investment assets test-exchange LT","2020-01-15","2024-12-15","1000.0000","700.0000","500.0000","500.0000","200.0000","300.0000""#,
-        "\n",
-        r#""investment assets test-exchange ST","2024-03-01","2024-11-20","500.0000","400.0000","350.0000","150.0000","50.0000","100.0000""#,
-        "\n",
+    let expected = format!(
+        "{PR_STATEMENT24_HEADER}{}\n{}\n",
+        concat!(
+            r#""investment assets test-exchange LT","2022-05-15","2024-09-01","20.0000","#,
+            r#""10.0000","2.0000","18.0000","8.0000","10.0000""#,
+        ),
+        concat!(
+            r#""investment assets test-exchange ST","2024-01-05","2024-08-01","1550.0000","#,
+            r#""707.0000","505.0000","1045.0000","202.0000","843.0000""#,
+        ),
     );
     assert_eq!(statement.to_string(), expected);
+
+    // F is the capital gain of the Non-US gain cell in the sums table.
+    let sums = worksheet.sums();
+    sums.assert_error_check();
+    let bona_fide_short = sums
+        .gain_matrix
+        .bona_fide_short
+        .expect("bona fide short cell");
+    let bona_fide_long = sums
+        .gain_matrix
+        .bona_fide_long
+        .expect("bona fide long cell");
+    assert_eq!(bona_fide_short.gain(), usd(843));
+    assert_eq!(bona_fide_long.gain(), usd(10));
+}
+
+/// A split with a US portion only is not PR property.  For a CapGainsWorksheet with only such a
+/// split, PR Statement 24 contains only the header line.  See #5.
+#[test]
+fn pr_statement24_without_pre_move_splits() {
+    let worksheet = worksheet(
+        EventSubType::Trade,
+        vec![EventAtom::Trade {
+            asset_amount: btc("-0.10000000"),
+            proceeds: usd(100),
+            net_gain: GainTerm::ShortUs(portion(40, 60, date(2023, 12, 1))),
+        }],
+    );
+
+    let worksheet_name = WorksheetName::from("test-exchange".to_string());
+    let statement = PrStatement24::from_worksheet(&worksheet_name, &worksheet);
+
+    assert_eq!(statement.to_string(), PR_STATEMENT24_HEADER);
 }
