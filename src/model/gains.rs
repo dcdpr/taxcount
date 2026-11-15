@@ -246,7 +246,7 @@ impl Display for CapGainsEventDetails<'_> {
                 name = atom.name(),
                 asset_name = atom.asset_amount().get_asset(),
                 asset_amount = atom.asset_amount(),
-                proceeds = atom.proceeds().unwrap_or_default(),
+                proceeds = atom.proceeds(),
                 fees = fee_share.to_csv_string(|x| *x),
             )?;
             // Columns G-P

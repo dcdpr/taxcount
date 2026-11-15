@@ -104,14 +104,19 @@ pub(crate) enum EventAtom {
 }
 
 impl EventAtom {
-    /// The USD proceeds of this atom, if any.
-    pub(crate) fn proceeds(&self) -> Option<UsdAmount> {
+    /// For a position atom, the proceeds are the sum of `proceeds_us` and `proceeds_bona_fide`.
+    /// For each other event atom, the proceeds are the value in `proceeds`.
+    pub(crate) fn proceeds(&self) -> UsdAmount {
         match self {
             Self::Trade { proceeds, .. }
             | Self::Income { proceeds, .. }
             | Self::Fee { proceeds, .. }
-            | Self::InvestmentFee { proceeds, .. } => Some(*proceeds),
-            Self::Position { .. } => None,
+            | Self::InvestmentFee { proceeds, .. } => *proceeds,
+            Self::Position {
+                proceeds_us,
+                proceeds_bona_fide,
+                ..
+            } => *proceeds_us + proceeds_bona_fide.unwrap_or_default(),
         }
     }
 
@@ -136,14 +141,9 @@ pub(crate) fn event_proceeds(atoms: &[EventAtom]) -> UsdAmount {
     atoms
         .iter()
         .fold(UsdAmount::default(), |acc, atom| match atom {
-            EventAtom::Trade { proceeds, .. } | EventAtom::Income { proceeds, .. } => {
-                acc + *proceeds
+            EventAtom::Trade { .. } | EventAtom::Income { .. } | EventAtom::Position { .. } => {
+                acc + atom.proceeds()
             }
-            EventAtom::Position {
-                proceeds_us,
-                proceeds_bona_fide,
-                ..
-            } => acc + *proceeds_us + proceeds_bona_fide.unwrap_or_default(),
             EventAtom::Fee { .. } | EventAtom::InvestmentFee { .. } => acc,
         })
 }
@@ -503,7 +503,7 @@ impl Event {
             );
             match res {
                 Ok(atom) => {
-                    fee_value += atom.proceeds().expect("Fee atom has proceeds");
+                    fee_value += atom.proceeds();
                     self.event_details.push(atom);
                 }
                 Err(err) => errors.push(err),

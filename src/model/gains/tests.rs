@@ -270,6 +270,56 @@ fn margin_close_fee_cost_in_position_cell() {
     assert_eq!(us_long.gain(), usd(19));
 }
 
+/// The event details file contains a line for the position atom of a margin close.  On that line,
+/// the "Proceeds" column contains the proceeds, and the "Fees" column contains the fee share.
+#[test]
+fn margin_close_proceeds_in_event_details() {
+    let worksheet = worksheet(
+        EventSubType::MarginClose,
+        vec![
+            EventAtom::Position {
+                asset_amount: KrakenAmount::new("ZUSD", "500.0000").unwrap(),
+                proceeds_us: usd(0),
+                proceeds_bona_fide: Some(usd(500)),
+            },
+            EventAtom::Fee {
+                asset_amount: btc("-0.00100000"),
+                proceeds: usd(20),
+                net_gain: GainTerm::LongUs(portion(1, 19, date(2020, 5, 15))),
+                ledger_row_id: None,
+            },
+        ],
+    );
+
+    let details = worksheet.event_details().expect("details").to_string();
+    let position = details
+        .lines()
+        .find(|line| line.contains(r#""Position""#))
+        .expect("position line");
+    assert!(
+        position.starts_with(r#""","Position","USD","500.0000","500.0000","20.0000","#),
+        "{position}"
+    );
+}
+
+/// For a position atom, proceeds() returns the sum of `proceeds_us` and `proceeds_bona_fide`.
+#[test]
+fn position_proceeds_us_and_bona_fide() {
+    let us = EventAtom::Position {
+        asset_amount: KrakenAmount::new("ZUSD", "12.0000").unwrap(),
+        proceeds_us: usd(12),
+        proceeds_bona_fide: None,
+    };
+    assert_eq!(us.proceeds(), usd(12));
+
+    let bona_fide = EventAtom::Position {
+        asset_amount: KrakenAmount::new("ZUSD", "34.0000").unwrap(),
+        proceeds_us: usd(0),
+        proceeds_bona_fide: Some(usd(34)),
+    };
+    assert_eq!(bona_fide.proceeds(), usd(34));
+}
+
 /// A withdrawal with a fee. The event is not a sale, so the fee coin disposal is the only gain.
 #[test]
 fn withdrawal_fee_is_disposal_only() {

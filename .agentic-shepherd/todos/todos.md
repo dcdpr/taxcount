@@ -13,20 +13,6 @@
     message means rewriting history.
   - Reported as GitHub issue dcdpr/taxcount#36.
 
-### [rgrant 20261113 21:59 UTC] 09 / Proceeds are 0.0000 for each margin close in event details file
-  - As a user, when I read a "Position" line in the event details file, I expect a USD value in its
-    "Proceeds" column. That value is the profit or the loss of the margin close.
-  - Each line with "Position" in the "Event" column is a margin close, and its "Proceeds" column
-    contains "0.0000".
-  - For a margin close in USD, the user can read the USD value from the "Asset Amount" column. For
-    a margin close in EUR, CHF, or JPY, the USD value is missing from the event details file.
-  - In references/kraken-tests, line "fe7af8-f0c7b-45b4a5" contains 11.8707 EUR in the "Asset
-    Amount" column and 0.0000 in the "Proceeds" column. The ledgers CSV contains 12.7859 USD for
-    the same margin close.
-  - The "Fees" column of that line contains the fee share 1.4370. "Proceeds" minus "Fees" is
-    -1.4370 on that line, and the correct value is 11.3489.
-  - The sums CSV and the ledgers CSV contain the correct values for each margin close.
-
 ### [rgrant 20261031 20:20 UTC] 05 / Statement 24 basis and market value are kludged out of gain totals
   - As a bona fide resident filing Form 482 statement 24, when the report is built, I expect each
     row to sum three figures over the lots sold after the move date: the sale price net of selling
@@ -82,3 +68,32 @@
     date."
   - SE Rule 4.2: "Short-term, US-sources gains only." in the doc comment of GainTerm::ShortUs.
     Correct text: "A short-term gain term with a US portion only."
+
+### [rgrant 20261115 18:23 UTC] 37 / SE Defects in src/model/gains.rs
+  - The file src/model/gains.rs contains SE Defects in doc comments that issue 09 did not change.
+  - SE Rule 4.2: "True when the atoms contain a sale: a trade atom or a position atom." in the doc
+    comment of is_sale_event(). Correct text: "is_sale_event() returns true if the atoms include a
+    trade atom or a position atom."
+  - SE Rule 3.9: "The gains matrix stores intermediate gains values across the full
+    term-length/residency matrix." in the doc comment of GainMatrix. Correct text: "A GainMatrix
+    contains the four gain cells of the gain matrix."
+  - SE Rule 4.2: "The address of one cell in the gains matrix." in the doc comment of CellId.
+    Correct text: "A CellId is the identifier of one gain cell in the gain matrix."
+  - SE Rule 3.9: "The sum of the fee values divides across the trade atoms pro-rata by amount" in
+    the doc comment of fee_shares(). Correct text: "fee_shares() divides the sum of the fee values
+    across the trade atoms by amount."
+
+### [rgrant 20261115 18:23 UTC] 38 / SE Defects in src/model/gains/tests.rs
+  - The file src/model/gains/tests.rs contains SE Defects in doc comments that issue 09 did not
+    change.
+  - SE Rule 4.2: "pr_statement24_dates() must collect dates from fee atoms in `event_details` , not
+    only trade atoms." in the doc comment of pr_statement24_dates_from_fees_only(). Correct text:
+    "pr_statement24_dates() collects the dates of the fee atoms and of the trade atoms in
+    `event_details` ."
+  - SE Rule 3.8: "A worksheet with fee-only bona fide activity must still produce dates for the PR
+    Statement-24 row." in the doc comment of pr_statement24_dates_from_fees_only(). Correct text:
+    "For a worksheet with bona fide fee atoms only, pr_statement24_dates() returns the dates for
+    the PR Statement 24 row."
+  - SE Rule 4.2: "A trade with two lots. The fee value divides across the lots pro-rata by amount."
+    in the doc comment of trade_fee_cost_pro_rata_across_lots(). Correct text: "fee_shares()
+    divides the fee value across the two trade atoms of a trade by amount."
