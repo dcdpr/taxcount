@@ -1,6 +1,6 @@
 # Issues Tracker (sorted by priority)
 
-### [rgrant 20261114 23:58 UTC] 36 / Local issue numbers in commits link to unrelated GitHub issues
+### [rgrant 20261114 23:58 UTC] 12 / Local issue numbers in commits link to unrelated GitHub issues
   - As a reader of the project on GitHub, when I see an issue number such as #4 in a commit
     message, I expect it to lead to the issue that the commit addresses, or to lead nowhere.
   - The project tracks issues locally with agentic-shepherd, which assigns its own issue numbers.
@@ -53,7 +53,7 @@
   - SE Rule 4.2: "Short-term, US-sources gains only." in the doc comment of GainTerm::ShortUs.
     Correct text: "A short-term gain term with a US portion only."
 
-### [rgrant 20261115 18:23 UTC] 37 / SE Defects in src/model/gains.rs
+### [rgrant 20261115 18:23 UTC] 13 / SE Defects in src/model/gains.rs
   - The file src/model/gains.rs contains SE Defects in doc comments that issue 09 did not change.
   - SE Rule 4.2: "True when the atoms contain a sale: a trade atom or a position atom." in the doc
     comment of is_sale_event(). Correct text: "is_sale_event() returns true if the atoms include a
@@ -67,7 +67,7 @@
     the doc comment of fee_shares(). Correct text: "fee_shares() divides the sum of the fee values
     across the trade atoms by amount."
 
-### [rgrant 20261115 18:23 UTC] 38 / SE Defects in src/model/gains/tests.rs
+### [rgrant 20261115 18:23 UTC] 14 / SE Defects in src/model/gains/tests.rs
   - The file src/model/gains/tests.rs contains SE Defects in doc comments that issue 09 did not
     change.
   - SE Rule 4.2: "pr_statement24_dates() must collect dates from fee atoms in `event_details` , not
@@ -82,7 +82,7 @@
     in the doc comment of trade_fee_cost_pro_rata_across_lots(). Correct text: "fee_shares()
     divides the fee value across the two trade atoms of a trade by amount."
 
-### [rgrant 20261115 19:38 UTC] 39 / The event details file contains different rows at each run
+### [rgrant 20261115 19:38 UTC] 15 / The event details file contains different rows at each run
   - As a maintainer, when I run the Kraken tests two times with the same inputs, I expect the same
     rows in fixtures/runs/kraken-tests/YYYYMMDD-ledgers-event-details.csv.
   - Taxcount uses now() to calculate some values in the event details file.
