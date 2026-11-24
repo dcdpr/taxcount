@@ -480,12 +480,20 @@ impl Checkpoint {
         let CheckpointHeader {
             time: _,
             semver,
+
+            #[cfg(debug_assertions)]
             gitver,
+            #[cfg(not(debug_assertions))]
+                gitver: _,
+
             latest_row_time,
         } = header;
 
         assert_eq!(fixture: semver, run: &run.header.semver, "header.semver");
+
+        #[cfg(debug_assertions)]
         assert_eq!(fixture: gitver, run: &run.header.gitver, "header.gitver");
+
         assert_eq!(
             fixture: latest_row_time,
             run: &run.header.latest_row_time,
