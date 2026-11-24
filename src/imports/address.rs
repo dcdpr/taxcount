@@ -80,7 +80,9 @@ pub(crate) struct AddressCache {
 
     /// For lazy initialization. Each time the `AddressDerivation` scheme is _not found_ in this
     /// set, the `keychains` vector will be walked and all matching `KeyChain`s will be advanced to
-    /// at least [`ENV::address_gap`].
+    /// at least [`Env::address_gap`].
+    ///
+    /// [`Env::address_gap`]: [`crate::env::Env::address_gap`]
     initialized: HashSet<AddressDerivation>,
 }
 

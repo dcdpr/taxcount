@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![allow(rustdoc::private_intra_doc_links)]
 
 pub use bdk;
 

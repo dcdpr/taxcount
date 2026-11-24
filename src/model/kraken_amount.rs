@@ -787,6 +787,8 @@ impl KrakenAmount {
     }
 
     /// Like [`Display`], but uses Kraken's preferred precision.
+    ///
+    /// [`Display`]: std::fmt::Display
     pub(crate) fn to_kraken_csv(self) -> String {
         let precision = self.get_kraken_precision();
         let amount = self.to_decimal().round_dp(precision.into());
