@@ -27,6 +27,7 @@ use std::{
 mod codegen;
 mod pathspec_hardcodes; // <-- all your hardcoded pathspecs
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GitHash {
     //TODO provide constructors to make these fields crate-private
@@ -36,6 +37,7 @@ pub struct GitHash {
     pub sha256: String,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(debug_assertions, derive(Default))]
 pub struct GitHead {
@@ -47,6 +49,7 @@ pub struct GitHead {
 /// Mapping pathspecs to hashes.
 pub type GitverMap = BTreeMap<PathBuf, GitHash>;
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GitverHashes {
     //TODO provide constructors to make these fields crate-private

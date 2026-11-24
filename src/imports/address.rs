@@ -34,6 +34,7 @@ pub enum AddressError {
 }
 
 /// An extended public key that remembers its original encoding.
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub(crate) struct Xpub {
     inner: ExtendedPubKey,
@@ -68,6 +69,7 @@ pub(crate) enum AddressDerivation {
 }
 
 /// The top-level structure for caching addresses.
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct AddressCache {
     /// Maps Script PubKeys ("addresses") to keychain references.
@@ -83,6 +85,7 @@ pub(crate) struct AddressCache {
 }
 
 /// A reference to index the `keychains` field and an index into the keychain.
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct KeyChainRef {
     id: KeyChainId,
@@ -90,6 +93,7 @@ struct KeyChainRef {
 }
 
 /// A keychain that can derive addresses. Stores the maximum address index derived so far.
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct KeyChain {
     xpub: Xpub,

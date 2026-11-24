@@ -195,6 +195,8 @@ impl GainTerm {
     ///
     /// The move-date value is the amount times the market rate at the move date.  If the exchange
     /// rates database is without that rate, the function returns an [`ExchangeRateError`].
+    ///
+    /// For a split of the base currency, the basis date is `event_date`.  See #15.
     fn from_split<A>(
         split: PoolAssetNonSplittable<A>,
         proceeds: UsdAmount,
@@ -210,7 +212,7 @@ impl GainTerm {
         let basis = amount.get_value_usd(
             lifecycle.get_exchange_rate_at_acquisition(&gain_config.exchange_rates_db)?,
         );
-        let basis_date = lifecycle.get_datetime();
+        let basis_date = lifecycle.get_datetime(event_date);
         let basis_synthetic_id = lifecycle.get_synthetic_id().to_string();
 
         let total_net_gain = GainPortion {
@@ -285,6 +287,7 @@ pub struct GainConfig {
     pub bona_fide_residency: Option<DateTime<Utc>>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum WalletDirection {
     /// Move between own wallets.

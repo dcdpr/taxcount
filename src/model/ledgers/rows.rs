@@ -222,7 +222,7 @@ pub(crate) fn parse_lrwr(r: &LedgerCSVRow) -> LedgerRowWithdrawalRequest {
 }
 
 /// LedgerRowTypical is a helper type for (and owned by) the parent enum type, which raises lr_type to the type system.
-#[cfg_attr(test, derive(Eq, PartialEq))]
+#[cfg_attr(any(test, feature = "integration-tests"), derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LedgerRowTypical {
     pub txid: String,

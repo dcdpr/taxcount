@@ -184,26 +184,36 @@ fn fee_split_basis_after_move_date() {
     }
 }
 
-/// For a USD fee split, the event date is before the move date.
+/// For a USD fee split, the event date is before the move date.  The basis date is the event
+/// date.  See #15.
 #[test]
 #[traced_test]
 fn usd_fee_before_move_date() {
     let split = usd_split("10.0000");
+    let event_date = date(2024, 2, 1);
 
-    match fee_gain_term(split, date(2024, 2, 1), 1) {
-        GainTerm::ShortUs(us) => assert_eq!(us.net_gain, usd(0)),
+    match fee_gain_term(split, event_date, 1) {
+        GainTerm::ShortUs(us) => {
+            assert_eq!(us.net_gain, usd(0));
+            assert_eq!(us.basis_date, event_date);
+        }
         other => panic!("expected GainTerm::ShortUs, got {other:?}"),
     }
 }
 
-/// For a USD fee split, the event date is after the move date.
+/// For a USD fee split, the event date is after the move date.  The basis date is the event date.
+/// See #15.
 #[test]
 #[traced_test]
 fn usd_fee_after_move_date() {
     let split = usd_split("10.0000");
+    let event_date = date(2024, 8, 5);
 
-    match fee_gain_term(split, date(2024, 8, 5), 1) {
-        GainTerm::ShortBonaFide(bona_fide) => assert_eq!(bona_fide.net_gain, usd(0)),
+    match fee_gain_term(split, event_date, 1) {
+        GainTerm::ShortBonaFide(bona_fide) => {
+            assert_eq!(bona_fide.net_gain, usd(0));
+            assert_eq!(bona_fide.basis_date, event_date);
+        }
         other => panic!("expected GainTerm::ShortBonaFide, got {other:?}"),
     }
 }

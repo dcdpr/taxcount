@@ -150,6 +150,7 @@ pub struct TxTag {
     pub(crate) exchange_rate: Option<KrakenAmount>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum TxType {
     /// Declare asset acquisition as resulting from exchange for another asset.
@@ -186,6 +187,7 @@ pub enum TxType {
     Spend,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub enum LoanRole {
     /// I am the lender in the loan agreement.
@@ -197,6 +199,7 @@ pub enum LoanRole {
 
 /// Auditor can answer the question of whether a ScriptPubKey belongs to the user, and therefore it
 /// can identify whether a transaction input or output is ours.
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Auditor {
     address_cache: AddressCache,

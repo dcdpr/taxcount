@@ -15,4 +15,7 @@ serde = { version = "1", features = ["derive"] }
 
 [features]
 verbose = []
+# With this option, the compiler adds PartialEq to the hash types, for the integration tests of
+# taxcount.
+integration-tests = []
 default = []

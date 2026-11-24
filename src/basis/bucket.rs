@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // spends to/from blockchain
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct Bucket {
     pub synthetic_id: String, // exchange UUID or blockchain transaction ID

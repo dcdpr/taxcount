@@ -1,7 +1,9 @@
 # Documentation for this configuration: https://embarkstudios.github.io/cargo-deny/checks/cfg.html
 
 [advisories]
-ignore = []
+ignore = [
+    { id = "RUSTSEC-2026-0543", reason = "taxcount and esploda use chrono for each date and time value." },
+]
 
 [licenses]
 # https://spdx.org/licenses/

@@ -28,6 +28,7 @@ pub enum Origin {
 }
 
 /// Resolves the recursive reference-counted PoolBTCs.
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) enum OriginSerializable {
     Bucket(Bucket),
@@ -177,22 +178,24 @@ impl BasisLifecycle {
     }
 
     /// Get the date-time of asset acquisition for this lifecycle.
-    pub(crate) fn get_datetime(&self) -> DateTime<Utc> {
+    ///
+    /// For the base currency, the basis date is `event_date`, the date of the disposal.  See #15.
+    pub(crate) fn get_datetime(&self, event_date: DateTime<Utc>) -> DateTime<Utc> {
         match &self.origin {
-            Origin::Base => Utc::now(),
+            Origin::Base => event_date,
             Origin::Bucket(bucket) | Origin::Income(bucket) => bucket.time,
             Origin::TradeBuy(LedgerTwoRowTrade { row_out, .. }) => row_out.time,
             Origin::MarginClose(LedgerMarginClose { row_proceeds, .. }) => row_proceeds.time,
 
             // Recursively resolve the origin date-time.
-            Origin::PoolBTC(pool_btc) => pool_btc.lifecycle.get_datetime(),
-            Origin::PoolCHF(pool_chf) => pool_chf.lifecycle.get_datetime(),
-            Origin::PoolETH(pool_eth) => pool_eth.lifecycle.get_datetime(),
-            Origin::PoolETHW(pool_ethw) => pool_ethw.lifecycle.get_datetime(),
-            Origin::PoolEUR(pool_eur) => pool_eur.lifecycle.get_datetime(),
-            Origin::PoolJPY(pool_jpy) => pool_jpy.lifecycle.get_datetime(),
-            Origin::PoolUSDC(pool_usdc) => pool_usdc.lifecycle.get_datetime(),
-            Origin::PoolUSDT(pool_usdt) => pool_usdt.lifecycle.get_datetime(),
+            Origin::PoolBTC(pool_btc) => pool_btc.lifecycle.get_datetime(event_date),
+            Origin::PoolCHF(pool_chf) => pool_chf.lifecycle.get_datetime(event_date),
+            Origin::PoolETH(pool_eth) => pool_eth.lifecycle.get_datetime(event_date),
+            Origin::PoolETHW(pool_ethw) => pool_ethw.lifecycle.get_datetime(event_date),
+            Origin::PoolEUR(pool_eur) => pool_eur.lifecycle.get_datetime(event_date),
+            Origin::PoolJPY(pool_jpy) => pool_jpy.lifecycle.get_datetime(event_date),
+            Origin::PoolUSDC(pool_usdc) => pool_usdc.lifecycle.get_datetime(event_date),
+            Origin::PoolUSDT(pool_usdt) => pool_usdt.lifecycle.get_datetime(event_date),
         }
     }
 

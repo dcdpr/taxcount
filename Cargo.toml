@@ -36,6 +36,9 @@ ureq = { version = "3", default-features = false, features = ["gzip", "json", "n
 # For the `optimize` feature
 log = { version = "0.4", optional = true }
 
+# For the `integration-tests` option
+similar-asserts = { version = "1", optional = true }
+
 [build-dependencies]
 gitver = { version = "0.1", path = "crates/gitver" }
 
@@ -43,6 +46,7 @@ gitver = { version = "0.1", path = "crates/gitver" }
 arbtest = "0.3"
 serde_json = "1"
 similar-asserts = "1"
+taxcount = { path = ".", features = ["integration-tests"] }
 tracing-log = "0.2"
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 
@@ -52,6 +56,10 @@ default = ["optimize", "tls"]
 optimize = ["log/release_max_level_warn", "tracing/release_max_level_warn"]
 
 tls = ["ureq/native-tls"]
+
+# The integration tests compare checkpoints with PartialEq.  With the taxcount line in
+# [dev-dependencies], `cargo test` uses this option, and `cargo build` does not.
+integration-tests = ["gitver/integration-tests", "dep:similar-asserts"]
 
 [workspace]
 members = [

@@ -12,8 +12,10 @@ use chrono::{DateTime, Utc};
 use gitver::GitverHashes;
 use ron::{de::SpannedError, ser::PrettyConfig};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "integration-tests")]
+use similar_asserts::assert_eq;
 use std::collections::{BTreeMap, HashMap};
-use std::{fmt::Debug, path::Path, rc::Rc};
+use std::{fmt::Debug, fs, path::Path, rc::Rc};
 use thiserror::Error;
 
 pub const CHECKPOINT_VERSION: &str = "3.0.0";
@@ -180,6 +182,7 @@ pub struct PendingAccountTx<A> {
     pub tx_info: HashMap<String, PendingTxInfo<A>>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 pub struct PendingTxInfo<A> {
     pub exchange_rate: Option<UsdAmount>,
@@ -190,8 +193,9 @@ pub struct PendingTxInfo<A> {
     pub fees: FIFO<A>,
 }
 
+/// The contents of a checkpoint file.  [`State::save()`] writes it, and [`State::load()`] reads it.
 #[derive(Debug, Deserialize, Serialize)]
-struct Checkpoint {
+pub struct Checkpoint {
     header: CheckpointHeader,
     bona_fide_residency: Option<DateTime<Utc>>,
     on_chain_balances: CheckpointUtxoBalances,
@@ -203,6 +207,7 @@ struct Checkpoint {
     auditor: Auditor,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 struct CheckpointUtxoBalances {
     btc: HashMap<String, FIFO<CheckpointPoolAsset>>,
@@ -216,6 +221,7 @@ struct CheckpointUtxoBalances {
     usdt: HashMap<String, FIFO<CheckpointPoolAsset>>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 struct CheckpointBalances {
     btc: FIFO<CheckpointPoolAsset>,
@@ -229,6 +235,7 @@ struct CheckpointBalances {
     usdt: FIFO<CheckpointPoolAsset>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 struct CheckpointPending {
     btc: BTreeMap<DateTime<Utc>, CheckpointBlockchain>,
@@ -242,6 +249,7 @@ struct CheckpointPending {
     usdt: BTreeMap<DateTime<Utc>, CheckpointBlockchain>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 struct CheckpointBlockchain {
     worksheet_name: String,
@@ -265,6 +273,7 @@ pub struct CheckpointHeader {
     pub latest_row_time: Option<String>,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Debug, Deserialize, Serialize)]
 struct CheckpointPoolAsset {
     balance: KrakenAmount,
@@ -305,7 +314,7 @@ impl State {
 
     /// Load a `State` from the given path.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, CheckpointError> {
-        let serialized = std::fs::read_to_string(path)?;
+        let serialized = fs::read_to_string(path)?;
         let checkpoint: Checkpoint = ron::from_str(&serialized)?;
 
         // Validate header.
@@ -338,7 +347,7 @@ impl State {
         };
         let serialized = ron::ser::to_string_pretty(&checkpoint, PrettyConfig::default())?;
 
-        std::fs::write(path, serialized)?;
+        fs::write(path, serialized)?;
 
         Ok(())
     }
@@ -436,6 +445,88 @@ impl State {
             .chain(self.pending_withdrawals.usdt.iter().flat_map(mpa("USDT")));
 
         (deposits, withdrawals)
+    }
+}
+
+#[cfg(feature = "integration-tests")]
+impl Checkpoint {
+    /// Reads the checkpoint file at `path` into a [`Checkpoint`].  [`State::load()`] also compares
+    /// the version in the header with [`CHECKPOINT_VERSION`].
+    pub fn load(path: impl AsRef<Path>) -> Result<Self, CheckpointError> {
+        let serialized = fs::read_to_string(path)?;
+
+        Ok(ron::from_str(&serialized)?)
+    }
+
+    /// Compares `self`, a checkpoint from a fixture, with `run`, a checkpoint from a test run.  If
+    /// the two checkpoints contain different values, the test fails.  assert_eq_checkpoint()
+    /// ignores the time in the header.  That value is the time when State::save() wrote the file.
+    /// HashMap::eq() ignores the sequence of the items in a HashMap.  As a result, a different
+    /// sequence of items in the file is permitted.
+    pub fn assert_eq_checkpoint(&self, run: &Self) {
+        // This `let` names each part of Checkpoint.  After a change to the parts of Checkpoint, the
+        // compiler shows an error here.
+        let Checkpoint {
+            header,
+            bona_fide_residency,
+            on_chain_balances,
+            exchange_balances,
+            pending_deposits,
+            pending_withdrawals,
+            borrower_collateral,
+            lender_capital,
+            auditor,
+        } = self;
+        let CheckpointHeader {
+            time: _,
+            semver,
+            gitver,
+            latest_row_time,
+        } = header;
+
+        assert_eq!(fixture: semver, run: &run.header.semver, "header.semver");
+        assert_eq!(fixture: gitver, run: &run.header.gitver, "header.gitver");
+        assert_eq!(
+            fixture: latest_row_time,
+            run: &run.header.latest_row_time,
+            "header.latest_row_time",
+        );
+        assert_eq!(
+            fixture: bona_fide_residency,
+            run: &run.bona_fide_residency,
+            "bona_fide_residency",
+        );
+        assert_eq!(
+            fixture: on_chain_balances,
+            run: &run.on_chain_balances,
+            "on_chain_balances",
+        );
+        assert_eq!(
+            fixture: exchange_balances,
+            run: &run.exchange_balances,
+            "exchange_balances",
+        );
+        assert_eq!(
+            fixture: pending_deposits,
+            run: &run.pending_deposits,
+            "pending_deposits",
+        );
+        assert_eq!(
+            fixture: pending_withdrawals,
+            run: &run.pending_withdrawals,
+            "pending_withdrawals",
+        );
+        assert_eq!(
+            fixture: borrower_collateral,
+            run: &run.borrower_collateral,
+            "borrower_collateral",
+        );
+        assert_eq!(
+            fixture: lender_capital,
+            run: &run.lender_capital,
+            "lender_capital",
+        );
+        assert_eq!(fixture: auditor, run: &run.auditor, "auditor");
     }
 }
 

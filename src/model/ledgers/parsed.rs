@@ -98,12 +98,14 @@ impl From<&MarginFeeRow> for LedgerRowTypical {
     }
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LedgerTwoRowTrade {
     pub(crate) row_out: LedgerRowTypical,
     pub(crate) row_in: LedgerRowTypical,
 }
 
+#[cfg_attr(feature = "integration-tests", derive(Eq, PartialEq))]
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct LedgerMarginClose {
     pub(crate) row_proceeds: LedgerRowTypical,

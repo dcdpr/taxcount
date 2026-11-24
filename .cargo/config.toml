@@ -2,7 +2,7 @@
 clippy-all = ["clippy", "--frozen", "--workspace", "--all-targets", "--", "--deny", "warnings"]
 clippy-all-update-crates = ["clippy", "--workspace", "--all-targets", "--", "--deny", "warnings"]
 crit = ["bench", "--bench", "parse_issue"]
-deny-check-offline = ["deny", "check", "--disable-fetch", "--allow", "unnecessary-skip"]
+deny-check-offline = ["deny", "--offline", "check", "--allow", "unnecessary-skip"]
 deny-check-update = ["deny", "check", "--allow", "unnecessary-skip"]
 deny-init = ["deny", "init"]
 deny-install = ["install", "--locked", "cargo-deny"]

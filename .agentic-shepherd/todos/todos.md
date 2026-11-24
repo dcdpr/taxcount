@@ -81,11 +81,3 @@
   - SE Rule 4.2: "A trade with two lots. The fee value divides across the lots pro-rata by amount."
     in the doc comment of trade_fee_cost_pro_rata_across_lots(). Correct text: "fee_shares()
     divides the fee value across the two trade atoms of a trade by amount."
-
-### [rgrant 20261115 19:38 UTC] 15 / The event details file contains different rows at each run
-  - As a maintainer, when I run the Kraken tests two times with the same inputs, I expect the same
-    rows in fixtures/runs/kraken-tests/YYYYMMDD-ledgers-event-details.csv.
-  - Taxcount uses now() to calculate some values in the event details file.
-  - As a result, git shows changed rows in that fixture after each run, also when the code and the
-    inputs are the same.
-  - Then a maintainer cannot find the rows that are different because of a change to the code.
