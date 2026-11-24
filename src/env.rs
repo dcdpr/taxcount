@@ -27,7 +27,7 @@ pub struct Env {
     /// [`AddressCache::is_mine`]: crate::imports::address::AddressCache::is_mine
     pub address_gap: u32,
     /// Accepts {bitcoin (default), testnet, signet, regtest}
-    /// https://docs.rs/bitcoin/latest/bitcoin/network/enum.Network.html
+    /// <https://docs.rs/bitcoin/latest/bitcoin/network/enum.Network.html>
     pub bitcoin_network: Option<String>,
     /// Accepts an `http:` or `https:` URL. Default is "http://localhost:3000"
     pub esplora_url: Option<String>,
@@ -57,9 +57,13 @@ impl Env {
             esplora_url: env::var("ESPLORA_URL").ok(),
             bitcoind_url: env::var("BITCOIND_URL").ok(),
             bitcoind_credentials: env::var("BITCOIND_CREDENTIALS").ok(),
-            rayon_num_threads: env::var("RAYON_NUM_THREADS").map_or_default(|num| num.parse().ok()),
-            term_color: env::var("TERM_COLOR")
-                .map_or_default(|color| color.parse().unwrap_or_default()),
+            rayon_num_threads: env::var("RAYON_NUM_THREADS").map_or(None, |num| {
+                Some(num.parse().expect("Error parsing RAYON_NUM_THREADS"))
+            }),
+            term_color: env::var("TERM_COLOR").map_or_else(
+                |_| TermColor::default(),
+                |color| color.parse().unwrap_or_default(),
+            ),
         }
     }
 }
@@ -88,9 +92,9 @@ impl FromStr for TermColor {
 
 impl TermColor {
     pub fn is_enabled(self) -> bool {
-        match (self, std::io::stdout().is_terminal()) {
-            (Self::Always, _) | (Self::Auto, true) => true,
-            _ => false,
-        }
+        matches!(
+            (self, std::io::stdout().is_terminal()),
+            (Self::Always, _) | (Self::Auto, true)
+        )
     }
 }

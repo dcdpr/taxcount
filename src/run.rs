@@ -109,7 +109,7 @@ pub fn run(args: Result<Args, CliError>) -> Result<(), Error> {
     let bitcoin_network: Network = ENV
         .bitcoin_network
         .as_deref()
-        .unwrap_or_else(|| "bitcoin")
+        .unwrap_or("bitcoin")
         .parse()?;
 
     let mut stats = Stats::default();
@@ -176,7 +176,7 @@ pub fn run(args: Result<Args, CliError>) -> Result<(), Error> {
     let esplora_url = ENV
         .esplora_url
         .as_deref()
-        .unwrap_or_else(|| "http://localhost:3000");
+        .unwrap_or("http://localhost:3000");
 
     let mut tx_tags = wallet::TxTags::new();
     let mut rows = Vec::new();
@@ -192,7 +192,7 @@ pub fn run(args: Result<Args, CliError>) -> Result<(), Error> {
             get_bitcoind_client(bitcoind_url, filename)?
         } else {
             let filename = esplora_client_cache_path(cache_dir, bitcoin_network);
-            get_esplora_client(&esplora_url, filename)?
+            get_esplora_client(esplora_url, filename)?
         });
         let mut auditor_init = state.auditor.clone();
 
