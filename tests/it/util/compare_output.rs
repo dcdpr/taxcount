@@ -2,9 +2,7 @@
 
 use crate::test_error::{io_error, TestError};
 use similar_asserts::assert_eq;
-use std::collections::BTreeSet;
-use std::fs;
-use std::path::Path;
+use std::{collections::BTreeSet, fs, path::Path};
 use taxcount::model::Checkpoint;
 
 /// If a test run wrote files that are different from the last run in `fixture_dir`, the test fails.
@@ -53,8 +51,8 @@ fn run_date(name: &str) -> Option<&str> {
 /// starts with the date of that run.
 fn last_prefix(dir: &Path) -> Result<String, TestError> {
     let mut dates = BTreeSet::new();
-    for entry in fs::read_dir(dir).map_err(io_error(dir))? {
-        let name = entry.map_err(io_error(dir))?.file_name();
+    for entry in fs::read_dir(dir).map_err(|source| io_error(dir, source))? {
+        let name = entry.map_err(|source| io_error(dir, source))?.file_name();
         if let Some(date) = run_date(&name.to_string_lossy()) {
             dates.insert(date.to_string());
         }
@@ -71,11 +69,11 @@ fn last_prefix(dir: &Path) -> Result<String, TestError> {
 /// Returns the name of each file in `dir` that starts with `prefix`, without `prefix`.
 fn unprefixed_file_names(dir: &Path, prefix: &str) -> Result<BTreeSet<String>, TestError> {
     let mut found = BTreeSet::new();
-    for entry in fs::read_dir(dir).map_err(io_error(dir))? {
-        let entry = entry.map_err(io_error(dir))?;
+    for entry in fs::read_dir(dir).map_err(|source| io_error(dir, source))? {
+        let entry = entry.map_err(|source| io_error(dir, source))?;
         let is_file = entry
             .file_type()
-            .map_err(io_error(&entry.path()))?
+            .map_err(|source| io_error(&entry.path(), source))?
             .is_file();
         if let Some(name) = entry.file_name().to_string_lossy().strip_prefix(prefix) {
             if is_file {
@@ -98,7 +96,7 @@ fn load_checkpoint(path: &Path) -> Result<Checkpoint, TestError> {
 /// Returns the lines of the file at `path`, with one newline between each two lines.  The line
 /// ends of the file and its last newline do not change the result.
 fn read_lines(path: &Path) -> Result<String, TestError> {
-    let text = fs::read_to_string(path).map_err(io_error(path))?;
+    let text = fs::read_to_string(path).map_err(|source| io_error(path, source))?;
 
     Ok(text.lines().collect::<Vec<_>>().join("\n"))
 }

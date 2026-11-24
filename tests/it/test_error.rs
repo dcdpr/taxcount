@@ -1,7 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
-use taxcount::errors::CheckpointError;
-use taxcount::run::Error as RunError;
+use taxcount::{errors::CheckpointError, run::Error as RunError};
 use thiserror::Error;
 
 /// An error that stops an Integration Test before its assertions.
@@ -32,9 +31,9 @@ pub enum TestError {
     },
 }
 
-/// Returns a function that makes a [`TestError::Io`] for `path` from an [`io::Error`].
-pub fn io_error(path: &Path) -> impl FnOnce(io::Error) -> TestError + '_ {
-    move |source| TestError::Io {
+/// Create a [`TestError::Io`] for `path` and `source`.
+pub fn io_error(path: &Path, source: io::Error) -> TestError {
+    TestError::Io {
         path: path.to_path_buf(),
         source,
     }
