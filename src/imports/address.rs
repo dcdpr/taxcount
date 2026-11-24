@@ -1,3 +1,4 @@
+use crate::env::ENV;
 use bdk::bitcoin::bip32::{ChildNumber, ExtendedPubKey};
 use bdk::bitcoin::{base58, secp256k1, Network, Script, ScriptBuf};
 use bdk::template::{Bip44Public, Bip49Public, Bip84Public, Bip86Public, DescriptorTemplate as _};
@@ -7,28 +8,12 @@ use miniscript::{Descriptor, DescriptorPublicKey, ForEachKey as _};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use thiserror::Error;
 use tracing::{debug, trace};
 
 type KeyChainId = usize;
 type ScriptMap = HashMap<ScriptBuf, KeyChainRef>;
-
-/// `AddressCache` maintains a minimum number of "gap" addresses for `Auditor::is_mine()`. This
-/// default value can be overridden with the `ADDRESS_GAP` environment variable. It cannot be set
-/// to a value less than 25.
-///
-/// See [`AddressCache::is_mine`] for operation details.
-static ADDRESS_GAP: LazyLock<u32> = LazyLock::new(|| {
-    std::env::var("ADDRESS_GAP")
-        .map(|value| {
-            value
-                .parse::<u32>()
-                .expect("Unable to parse ADDRESS_GAP env var")
-        })
-        .unwrap_or_default()
-        .max(25)
-});
 
 #[derive(Debug, Error)]
 pub enum AddressError {
@@ -93,7 +78,7 @@ pub(crate) struct AddressCache {
 
     /// For lazy initialization. Each time the `AddressDerivation` scheme is _not found_ in this
     /// set, the `keychains` vector will be walked and all matching `KeyChain`s will be advanced to
-    /// at least [`ADDRESS_GAP`].
+    /// at least [`ENV::address_gap`].
     initialized: HashSet<AddressDerivation>,
 }
 
@@ -279,7 +264,7 @@ impl AddressCache {
     /// If `predicate` is set, only matching keychains will be initialized. This is used for lazy
     /// address derivation.
     pub(crate) fn initialize(&mut self, predicate: Option<AddressDerivation>) {
-        let min_address_gap = *ADDRESS_GAP;
+        let min_address_gap = ENV.address_gap;
         let script_maps = Arc::new(Mutex::new(Vec::with_capacity(self.keychains.len())));
 
         if let Some(address_derivation) = predicate {
@@ -388,7 +373,7 @@ impl KeyChain {
 
     /// Derive new addresses to maintain the lookahead.
     fn lookahead(&mut self, id: KeyChainId, address_index: u32) -> Option<ScriptMap> {
-        let max_address_index = address_index + *ADDRESS_GAP;
+        let max_address_index = address_index + ENV.address_gap;
         if max_address_index > self.max_address_index {
             let new_addresses = max_address_index - self.max_address_index;
 

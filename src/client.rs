@@ -1,7 +1,8 @@
+use crate::env::ENV;
 use bdk::bitcoin::{BlockHash, Txid};
 use esploda::esplora::Transaction;
 use rayon::{ThreadPool, ThreadPoolBuilder};
-use std::{collections::HashMap, env, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use thiserror::Error;
 
 pub mod bitcoind;
@@ -64,9 +65,6 @@ impl ClientApi for Client {
 
 #[derive(Debug, Error)]
 pub enum PoolError {
-    #[error("Error parsing RAYON_NUM_THREADS")]
-    RayonThreadPoolSize(#[source] std::num::ParseIntError),
-
     #[error("Rayon thread pool error")]
     RayonThreadPoolInit(#[from] rayon::ThreadPoolBuildError),
 }
@@ -82,10 +80,7 @@ pub enum ClientError {
 
 pub(crate) fn create_thread_pool() -> Result<(usize, ThreadPool), PoolError> {
     // Configure the Rayon thread pool for high I/O concurrency.
-    let num_threads = env::var("RAYON_NUM_THREADS")
-        .unwrap_or_else(|_| DEFAULT_THREADPOOL_SIZE.to_string())
-        .parse()
-        .map_err(PoolError::RayonThreadPoolSize)?;
+    let num_threads = ENV.rayon_num_threads.unwrap_or(DEFAULT_THREADPOOL_SIZE);
 
     let pool = ThreadPoolBuilder::new().num_threads(num_threads).build()?;
 

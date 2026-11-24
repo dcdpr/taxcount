@@ -1,3 +1,4 @@
+use crate::env::ENV;
 use base64::engine::{general_purpose::URL_SAFE, Engine as _};
 use bdk::bitcoin::{BlockHash, Txid};
 use esploda::bitcoind::{Bitcoind, Block, Status, Transaction};
@@ -6,7 +7,7 @@ use fett::Fett;
 use rayon::{prelude::*, ThreadPool};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
-use std::{collections::HashMap, env, time::Instant};
+use std::{collections::HashMap, time::Instant};
 use thiserror::Error;
 use tracing::{info, trace};
 use ureq::tls::{TlsConfig, TlsProvider};
@@ -242,8 +243,8 @@ fn get_basic_auth() -> Option<&'static str> {
 
     USER_PASS
         .get_or_init(|| {
-            env::var("BITCOIND_CREDENTIALS")
-                .ok()
+            ENV.bitcoind_credentials
+                .as_ref()
                 .map(|user_pass| format!("Basic {}", URL_SAFE.encode(user_pass)))
         })
         .as_deref()

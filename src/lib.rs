@@ -3,10 +3,13 @@
 pub use bdk;
 
 pub mod basis;
+pub mod cli;
 pub mod client;
+pub mod env;
 pub mod errors;
 pub mod imports;
 pub mod model;
+pub mod run;
 pub mod util;
 
 pub mod gitver_hashes {
