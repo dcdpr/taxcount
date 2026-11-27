@@ -1,7 +1,7 @@
 [package]
 name = "taxcount"
 description = "US tax accounting software for Bitcoiners, with support for popular cryptocurrencies and fiat exchanges."
-version = "0.2.0+782520d"
+version = "0.2.0+e2376a3"
 authors = ["rgrant <taxcount@contract.design>", "Jay Oster <jay@blipjoy.com>"]
 edition = "2021"
 publish = false
