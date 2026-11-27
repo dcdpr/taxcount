@@ -477,25 +477,14 @@ impl Checkpoint {
             lender_capital,
             auditor,
         } = self;
-        let CheckpointHeader {
-            time: _,
-            semver,
 
-            #[cfg(debug_assertions)]
-            gitver,
-            #[cfg(not(debug_assertions))]
-                gitver: _,
-
-            latest_row_time,
-        } = header;
-
-        assert_eq!(fixture: semver, run: &run.header.semver, "header.semver");
+        assert_eq!(fixture: &header.semver, run: &run.header.semver, "header.semver");
 
         #[cfg(debug_assertions)]
-        assert_eq!(fixture: gitver, run: &run.header.gitver, "header.gitver");
+        assert_eq!(fixture: &header.gitver, run: &run.header.gitver, "header.gitver");
 
         assert_eq!(
-            fixture: latest_row_time,
+            fixture: &header.latest_row_time,
             run: &run.header.latest_row_time,
             "header.latest_row_time",
         );
